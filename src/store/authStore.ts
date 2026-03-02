@@ -73,19 +73,23 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       const { data, error } = await supabase.auth.signUp({
         email,
         password,
+        options: {
+          data: {
+            first_name: firstName,
+            last_name: lastName,
+          },
+        },
       });
       if (error) throw error;
 
-      // Créer le profil
-      if (data.user) {
-        const { error: profileError } = await supabase
-          .from('profiles')
-          .insert({
-            id: data.user.id,
-            first_name: firstName,
-            last_name: lastName,
-          });
-        if (profileError) console.error('Profile creation error:', profileError);
+      // Si Supabase ne retourne pas de session (confirmation email activée),
+      // on connecte directement l'utilisateur
+      if (!data.session && data.user) {
+        const { error: signInError } = await supabase.auth.signInWithPassword({
+          email,
+          password,
+        });
+        if (signInError) throw signInError;
       }
     } finally {
       set({ isLoading: false });

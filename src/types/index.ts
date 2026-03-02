@@ -17,7 +17,7 @@ export type Project = Database['public']['Tables']['projects']['Row'];
 export type ProjectInsert = Database['public']['Tables']['projects']['Insert'];
 export type ProjectUpdate = Database['public']['Tables']['projects']['Update'];
 
-export type ProductType = 'album' | 'magazine' | 'wall_deco';
+export type ProductType = 'album' | 'magazine';
 export type BindingType = 'hardcover' | 'softcover' | 'lay_flat';
 export type FormatType = 'a4_portrait' | 'a4_landscape' | 'square';
 export type PaperType = 'standard' | 'cream_satin';

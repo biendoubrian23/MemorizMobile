@@ -221,7 +221,7 @@ function CartItemCard({
 }
 
 function getProductLabel(type: string) {
-  const map: Record<string, string> = { album: 'Album', magazine: 'Magazine', wall_deco: 'Déco' };
+  const map: Record<string, string> = { album: 'Album', magazine: 'Magazine' };
   return map[type] || '';
 }
 function getFormatShort(format: string) {

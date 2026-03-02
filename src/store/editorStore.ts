@@ -1,6 +1,25 @@
 import { create } from 'zustand';
 import { PageData, PageLayout, FormatType } from '../types';
 import { DEFAULT_LAYOUTS } from '../../editor/utils/layouts';
+import { saveDraft, loadDraft } from '../services/draftStorage';
+
+// ─── Debounce helper for auto-save ───
+let saveTimer: ReturnType<typeof setTimeout> | null = null;
+const SAVE_DELAY = 1500; // ms
+
+function debouncedSave(state: EditorState) {
+  if (saveTimer) clearTimeout(saveTimer);
+  saveTimer = setTimeout(async () => {
+    if (!state.projectId) return;
+    try {
+      await saveDraft(state.projectId, state.format, state.pages, state.availablePhotos);
+      // Marque comme sauvegardé sans re-trigger
+      useEditorStore.setState({ isSaved: true });
+    } catch (e) {
+      console.warn('[draftStorage] auto-save failed', e);
+    }
+  }, SAVE_DELAY);
+}
 
 interface EditorState {
   projectId: string | null;
@@ -13,7 +32,7 @@ interface EditorState {
   isSaved: boolean;
 
   // Actions
-  initEditor: (projectId: string, format: FormatType, existingPages?: PageData[]) => void;
+  initEditor: (projectId: string, format: FormatType, existingPages?: PageData[]) => Promise<void>;
   setSelectedPage: (index: number) => void;
   setSelectedSlot: (index: number | null) => void;
   updatePageLayout: (pageIndex: number, layout: PageLayout) => void;
@@ -26,6 +45,8 @@ interface EditorState {
   markSaved: () => void;
   markUnsaved: () => void;
   resetEditor: () => void;
+  loadDraftForProject: (projectId: string) => Promise<boolean>;
+  saveDraftNow: () => Promise<void>;
 }
 
 const createEmptyPage = (pageIndex: number): PageData => ({
@@ -46,16 +67,33 @@ export const useEditorStore = create<EditorState>((set, get) => ({
   isLoading: false,
   isSaved: true,
 
-  initEditor: (projectId, format, existingPages) => {
-    const pages = existingPages && existingPages.length > 0
-      ? existingPages
-      : Array.from({ length: 24 }, (_, i) => createEmptyPage(i));
+  initEditor: async (projectId, format, existingPages) => {
+    // 1. Si on a des pages existantes, on les utilise
+    // 2. Sinon on essaie de charger un brouillon local
+    // 3. Sinon on crée 24 pages vides
+    let pages: PageData[];
+    let photos: string[] = [];
+
+    if (existingPages && existingPages.length > 0) {
+      pages = existingPages;
+    } else {
+      const draft = await loadDraft(projectId);
+      if (draft) {
+        pages = draft.pages;
+        photos = draft.availablePhotos || [];
+        format = draft.metadata.format as FormatType;
+      } else {
+        pages = Array.from({ length: 24 }, (_, i) => createEmptyPage(i));
+      }
+    }
+
     set({
       projectId,
       format,
       pages,
       selectedPageIndex: 0,
       selectedSlotIndex: null,
+      availablePhotos: photos,
       isSaved: true,
     });
   },
@@ -77,6 +115,7 @@ export const useEditorStore = create<EditorState>((set, get) => ({
       pages[pageIndex] = page;
       return { pages, isSaved: false };
     });
+    debouncedSave(get());
   },
 
   updateSlotPhoto: (pageIndex, slotIndex, photoUri) => {
@@ -89,6 +128,7 @@ export const useEditorStore = create<EditorState>((set, get) => ({
       pages[pageIndex] = page;
       return { pages, isSaved: false };
     });
+    debouncedSave(get());
   },
 
   updateSlotText: (pageIndex, slotIndex, text) => {
@@ -101,6 +141,7 @@ export const useEditorStore = create<EditorState>((set, get) => ({
       pages[pageIndex] = page;
       return { pages, isSaved: false };
     });
+    debouncedSave(get());
   },
 
   addPage: () => {
@@ -108,6 +149,7 @@ export const useEditorStore = create<EditorState>((set, get) => ({
       pages: [...state.pages, createEmptyPage(state.pages.length)],
       isSaved: false,
     }));
+    debouncedSave(get());
   },
 
   removePage: (index) => {
@@ -118,6 +160,7 @@ export const useEditorStore = create<EditorState>((set, get) => ({
       selectedPageIndex: Math.max(0, state.selectedPageIndex - 1),
       isSaved: false,
     }));
+    debouncedSave(get());
   },
 
   setAvailablePhotos: (photos) => set({ availablePhotos: photos }),
@@ -135,4 +178,26 @@ export const useEditorStore = create<EditorState>((set, get) => ({
       availablePhotos: [],
       isSaved: true,
     }),
+
+  loadDraftForProject: async (projectId: string) => {
+    const draft = await loadDraft(projectId);
+    if (!draft) return false;
+    set({
+      projectId,
+      format: draft.metadata.format as FormatType,
+      pages: draft.pages,
+      availablePhotos: draft.availablePhotos || [],
+      selectedPageIndex: 0,
+      selectedSlotIndex: null,
+      isSaved: true,
+    });
+    return true;
+  },
+
+  saveDraftNow: async () => {
+    const state = get();
+    if (!state.projectId) return;
+    await saveDraft(state.projectId, state.format, state.pages, state.availablePhotos);
+    set({ isSaved: true });
+  },
 }));

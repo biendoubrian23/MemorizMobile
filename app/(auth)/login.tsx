@@ -8,6 +8,7 @@ import {
   Alert,
   KeyboardAvoidingView,
   Platform,
+  Image,
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -44,13 +45,13 @@ export default function LoginScreen() {
 
   return (
     <View style={styles.container}>
+      {/* Accent gradient blob top-right */}
       <LinearGradient
-        colors={[Colors.backgroundGradientStart, Colors.backgroundGradientEnd, Colors.background]}
-        style={StyleSheet.absoluteFill}
-        start={{ x: 0.5, y: 0 }}
-        end={{ x: 0.5, y: 0.35 }}
+        colors={['#FDE8EC', '#E8F4FD'] as const}
+        style={styles.accentBlob}
+        start={{ x: 0, y: 0 }}
+        end={{ x: 1, y: 1 }}
       />
-
       <SafeAreaView style={styles.safeArea}>
         <KeyboardAvoidingView
           behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
@@ -79,9 +80,13 @@ export default function LoginScreen() {
               <Text style={styles.subtitle}>Vos projets vous attendent.</Text>
             </View>
 
+
             {/* Google button */}
             <TouchableOpacity style={styles.googleButton} onPress={handleGoogleLogin}>
-              <Text style={styles.googleIcon}>G</Text>
+              <Image
+                source={{ uri: 'https://developers.google.com/identity/images/g-logo.png' }}
+                style={styles.googleLogo}
+              />
               <Text style={styles.googleText}>Continuer avec Google</Text>
             </TouchableOpacity>
 
@@ -162,6 +167,16 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: Colors.background,
+    overflow: 'hidden',
+  },
+  accentBlob: {
+    position: 'absolute',
+    top: -80,
+    right: -80,
+    width: 220,
+    height: 220,
+    borderRadius: 110,
+    opacity: 0.7,
   },
   safeArea: {
     flex: 1,
@@ -182,15 +197,18 @@ const styles = StyleSheet.create({
   },
   titleContainer: {
     marginBottom: Spacing['3xl'],
+    alignItems: 'center',
   },
   title: {
     ...Typography.h1,
     color: Colors.textPrimary,
     marginBottom: Spacing.xs,
+    textAlign: 'center',
   },
   subtitle: {
     ...Typography.bodyLarge,
     color: Colors.textSecondary,
+    textAlign: 'center',
   },
 
   // Google
@@ -204,10 +222,9 @@ const styles = StyleSheet.create({
     paddingVertical: Spacing.lg,
     marginBottom: Spacing['2xl'],
   },
-  googleIcon: {
-    fontSize: 20,
-    fontWeight: '700',
-    color: '#4285F4',
+  googleLogo: {
+    width: 22,
+    height: 22,
     marginRight: Spacing.md,
   },
   googleText: {

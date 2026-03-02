@@ -38,25 +38,25 @@ export const Typography = {
     fontStyle: 'italic' as const,
   },
 
-  // Headings
+  // Headings (Playfair Display — style "Vogue")
   h1: {
+    fontFamily: 'PlayfairDisplay_700Bold',
     fontSize: FontSizes['4xl'],
-    fontWeight: FontWeights.bold,
     lineHeight: FontSizes['4xl'] * LineHeights.tight,
   },
   h2: {
+    fontFamily: 'PlayfairDisplay_700Bold',
     fontSize: FontSizes['3xl'],
-    fontWeight: FontWeights.bold,
     lineHeight: FontSizes['3xl'] * LineHeights.tight,
   },
   h3: {
+    fontFamily: 'PlayfairDisplay_700Bold',
     fontSize: FontSizes['2xl'],
-    fontWeight: FontWeights.semibold,
     lineHeight: FontSizes['2xl'] * LineHeights.tight,
   },
   h4: {
+    fontFamily: 'PlayfairDisplay_700Bold',
     fontSize: FontSizes.xl,
-    fontWeight: FontWeights.semibold,
     lineHeight: FontSizes.xl * LineHeights.normal,
   },
 

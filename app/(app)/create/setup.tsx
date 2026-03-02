@@ -14,9 +14,10 @@ import { router } from 'expo-router';
 import { Colors, Typography, Spacing, BorderRadius } from '../../../src/theme';
 import { Button } from '../../../src/components/ui';
 import { useProjectStore } from '../../../src/store/projectStore';
+import { useEditorStore } from '../../../src/store/editorStore';
 import { useAuthStore } from '../../../src/store/authStore';
 
-type ProductType = 'album' | 'magazine' | 'wall_deco';
+type ProductType = 'album' | 'magazine';
 type BindingType = 'hardcover' | 'softcover' | 'lay_flat';
 type FormatType = 'a4_portrait' | 'a4_landscape' | 'square';
 type PaperType = 'standard' | 'cream_satin';
@@ -26,7 +27,6 @@ type ColorMode = 'color' | 'black_white';
 const PRODUCT_OPTIONS: { key: ProductType; label: string; icon: string }[] = [
   { key: 'album', label: 'Album', icon: 'book' },
   { key: 'magazine', label: 'Magazine', icon: 'newspaper' },
-  { key: 'wall_deco', label: 'Déco Murale', icon: 'image' },
 ];
 
 const BINDING_MAP: Record<string, { key: BindingType; label: string; desc: string }[]> = {
@@ -38,7 +38,6 @@ const BINDING_MAP: Record<string, { key: BindingType; label: string; desc: strin
   magazine: [
     { key: 'softcover', label: 'Standard', desc: 'Reliure agrafée classique' },
   ],
-  wall_deco: [],
 };
 
 const FORMAT_OPTIONS: { key: FormatType; label: string; ratio: string }[] = [
@@ -66,6 +65,7 @@ const COLOR_OPTIONS: { key: ColorMode; label: string; icon: keyof typeof Ionicon
 export default function CreateSetupScreen() {
   const { user } = useAuthStore();
   const { createProject } = useProjectStore();
+  const { initEditor } = useEditorStore();
 
   const [step, setStep] = useState(0);
   const [productType, setProductType] = useState<ProductType>('album');
@@ -78,7 +78,7 @@ export default function CreateSetupScreen() {
 
   const steps = [
     'Type de produit',
-    ...(productType !== 'wall_deco' ? ['Reliure'] : []),
+    'Reliure',
     'Format',
     'Papier',
     'Lamination',
@@ -94,7 +94,7 @@ export default function CreateSetupScreen() {
       // Create project
       setIsCreating(true);
       try {
-        await createProject({
+        const created = await createProject({
           user_id: user!.id,
           title: 'Mon Souvenir',
           product_type: productType,
@@ -107,7 +107,9 @@ export default function CreateSetupScreen() {
           pages_data: {},
           status: 'draft',
         });
-        router.replace('/(app)/(tabs)/projects');
+        // Initialise l'éditeur avec le format choisi puis redirige
+        initEditor(created.id, format);
+        router.replace(`/(editor)/${created.id}`);
       } catch (err: any) {
         Alert.alert('Erreur', err.message || 'Impossible de créer le projet');
       } finally {

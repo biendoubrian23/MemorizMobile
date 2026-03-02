@@ -33,14 +33,6 @@ const MENU_DATA: MenuCategory[] = [
       { label: 'Magazine Premium' },
     ],
   },
-  {
-    title: 'Déco Murale',
-    items: [
-      { label: 'Poster' },
-      { label: 'Toile Canvas' },
-      { label: 'Aluminium' },
-    ],
-  },
 ];
 
 const LINKS = [
@@ -139,7 +131,7 @@ export default function MenuScreen() {
             <Ionicons name="add-circle-outline" size={24} color={Colors.white} />
             <View style={styles.ctaTextContainer}>
               <Text style={styles.ctaTitle}>Créer mon souvenir</Text>
-              <Text style={styles.ctaSub}>Album, Magazine ou Déco murale</Text>
+              <Text style={styles.ctaSub}>Album ou Magazine</Text>
             </View>
             <Ionicons name="chevron-forward" size={22} color={Colors.white} />
           </LinearGradient>

@@ -8,10 +8,10 @@ import {
   Alert,
   KeyboardAvoidingView,
   Platform,
+  ImageBackground,
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import { Colors, Typography, Spacing, BorderRadius } from '../../src/theme';
 import { Button, Input, Logo } from '../../src/components/ui';
@@ -52,16 +52,7 @@ export default function RegisterScreen() {
 
   return (
     <View style={styles.container}>
-      {/* Top gradient border */}
-      <LinearGradient
-        colors={['#6BB5FF', '#4ECDC4', '#6BB5FF']}
-        style={styles.topBorder}
-        start={{ x: 0, y: 0 }}
-        end={{ x: 1, y: 0 }}
-      />
-
-      <SafeAreaView style={styles.safeArea}>
-        <KeyboardAvoidingView
+      <KeyboardAvoidingView
           behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
           style={{ flex: 1 }}
         >
@@ -70,32 +61,32 @@ export default function RegisterScreen() {
             showsVerticalScrollIndicator={false}
             keyboardShouldPersistTaps="handled"
           >
-            {/* Header */}
-            <View style={styles.header}>
-              <TouchableOpacity
-                onPress={() => router.back()}
-                style={styles.backButton}
-              >
-                <Ionicons name="chevron-back" size={24} color={Colors.textPrimary} />
-              </TouchableOpacity>
-              <Text style={styles.stepIndicator}>Étape 1/2</Text>
-            </View>
-
-            {/* Hero banner placeholder */}
-            <LinearGradient
-              colors={['#D4C5A9', '#B8A88A']}
+            {/* Hero banner with overlaid header */}
+            <ImageBackground
+              source={require('../../assets/images/inscription.jpeg')}
               style={styles.heroBanner}
-              start={{ x: 0, y: 0 }}
-              end={{ x: 1, y: 1 }}
-            />
+              resizeMode="cover"
+            >
+              <View style={styles.heroOverlay} />
 
-            {/* Title */}
-            <View style={styles.titleContainer}>
-              <Text style={styles.title}>Rejoignez le club</Text>
-              <Text style={styles.subtitle}>
-                Créez votre premier album dès{'\n'}aujourd'hui.
-              </Text>
-            </View>
+              {/* Header on top of image */}
+              <SafeAreaView edges={['top']} style={styles.heroHeader}>
+                <TouchableOpacity
+                  onPress={() => router.back()}
+                  style={styles.backButton}
+                >
+                  <Ionicons name="chevron-back" size={24} color={Colors.white} />
+                </TouchableOpacity>
+              </SafeAreaView>
+
+              {/* Title on image */}
+              <View style={styles.heroTextContainer}>
+                <Text style={styles.heroTitle}>Rejoignez le club</Text>
+                <Text style={styles.heroSubtitle}>
+                  Créez votre premier album dès{' '}aujourd'hui.
+                </Text>
+              </View>
+            </ImageBackground>
 
             {/* Form */}
             <View style={styles.form}>
@@ -185,7 +176,6 @@ export default function RegisterScreen() {
             </View>
           </ScrollView>
         </KeyboardAvoidingView>
-      </SafeAreaView>
     </View>
   );
 }
@@ -195,51 +185,58 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: Colors.background,
   },
-  topBorder: {
-    height: 4,
-  },
-  safeArea: {
-    flex: 1,
-  },
   scrollContent: {
-    paddingHorizontal: Spacing.xl,
     paddingBottom: Spacing['4xl'],
   },
-  header: {
+  heroBanner: {
+    height: 200,
+    borderBottomLeftRadius: BorderRadius.xl,
+    borderBottomRightRadius: BorderRadius.xl,
+    overflow: 'hidden',
+    marginBottom: Spacing['2xl'],
+  },
+  heroOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(0,0,0,0.25)',
+  },
+  heroHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    paddingTop: Spacing.md,
-    marginBottom: Spacing.lg,
+    paddingHorizontal: Spacing.lg,
+    paddingTop: Spacing.sm,
   },
   backButton: {
-    padding: Spacing.xs,
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: 'rgba(255,255,255,0.25)',
+    alignItems: 'center',
+    justifyContent: 'center',
   },
-  stepIndicator: {
-    ...Typography.bodySmall,
-    color: Colors.accent,
-    fontWeight: '600',
+
+  heroTextContainer: {
+    flex: 1,
+    justifyContent: 'flex-end',
+    alignItems: 'center',
+    paddingHorizontal: Spacing.xl,
+    paddingBottom: Spacing.xl,
   },
-  heroBanner: {
-    height: 80,
-    borderRadius: BorderRadius.lg,
-    marginBottom: Spacing['2xl'],
-  },
-  titleContainer: {
-    marginBottom: Spacing['2xl'],
-  },
-  title: {
+  heroTitle: {
     ...Typography.h2,
-    color: Colors.textPrimary,
+    color: Colors.white,
     marginBottom: Spacing.xs,
+    textAlign: 'center',
   },
-  subtitle: {
+  heroSubtitle: {
     ...Typography.body,
-    color: Colors.textSecondary,
+    color: 'rgba(255,255,255,0.9)',
     lineHeight: 22,
+    textAlign: 'center',
   },
   form: {
     marginBottom: Spacing.lg,
+    paddingHorizontal: Spacing.xl,
   },
   nameRow: {
     flexDirection: 'row',
@@ -285,12 +282,14 @@ const styles = StyleSheet.create({
   submitContainer: {
     marginTop: Spacing.xl,
     marginBottom: Spacing.xl,
+    paddingHorizontal: Spacing.xl,
   },
 
   // Login
   loginRow: {
     flexDirection: 'row',
     justifyContent: 'center',
+    paddingHorizontal: Spacing.xl,
   },
   loginText: {
     ...Typography.body,

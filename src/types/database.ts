@@ -33,7 +33,7 @@ export interface Database {
           user_id: string;
           title: string;
           cover_image_url: string | null;
-          product_type: 'album' | 'magazine' | 'wall_deco';
+          product_type: 'album' | 'magazine';
           binding_type: 'hardcover' | 'softcover' | 'lay_flat';
           format: 'a4_portrait' | 'a4_landscape' | 'square';
           paper_type: 'standard' | 'cream_satin';
@@ -50,7 +50,7 @@ export interface Database {
           user_id: string;
           title: string;
           cover_image_url?: string | null;
-          product_type: 'album' | 'magazine' | 'wall_deco';
+          product_type: 'album' | 'magazine';
           binding_type: 'hardcover' | 'softcover' | 'lay_flat';
           format: 'a4_portrait' | 'a4_landscape' | 'square';
           paper_type?: 'standard' | 'cream_satin';
@@ -120,7 +120,7 @@ export interface Database {
     Views: Record<string, never>;
     Functions: Record<string, never>;
     Enums: {
-      product_type: 'album' | 'magazine' | 'wall_deco';
+      product_type: 'album' | 'magazine';
       binding_type: 'hardcover' | 'softcover' | 'lay_flat';
       format_type: 'a4_portrait' | 'a4_landscape' | 'square';
       paper_type: 'standard' | 'cream_satin';

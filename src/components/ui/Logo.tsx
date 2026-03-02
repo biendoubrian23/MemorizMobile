@@ -22,8 +22,7 @@ export const Logo: React.FC<LogoProps> = ({
 
 const styles = StyleSheet.create({
   logo: {
-    fontWeight: '700',
-    fontStyle: 'italic',
+    fontFamily: 'PlayfairDisplay_700Bold',
   },
   sm: {
     fontSize: 18,

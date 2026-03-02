@@ -5,7 +5,7 @@
 
 -- Enums
 DO $$ BEGIN
-  CREATE TYPE product_type AS ENUM ('album', 'magazine', 'wall_deco');
+  CREATE TYPE product_type AS ENUM ('album', 'magazine');
 EXCEPTION WHEN duplicate_object THEN NULL;
 END $$;
 

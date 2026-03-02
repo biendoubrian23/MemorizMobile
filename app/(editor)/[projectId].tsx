@@ -1,4 +1,4 @@
-import React, { useCallback, useState } from 'react';
+import React, { useCallback, useState, useEffect } from 'react';
 import {
   View,
   Text,
@@ -37,9 +37,18 @@ export default function EditorScreen() {
     setSelectedSlot,
     updateSlotPhoto,
     updatePageLayout,
+    initEditor,
+    saveDraftNow,
   } = useEditorStore();
 
   const [activeSheet, setActiveSheet] = useState<ToolbarTab | null>(null);
+
+  // Charge le brouillon local quand l'écran s'ouvre
+  useEffect(() => {
+    if (projectId && pages.length === 0) {
+      initEditor(projectId, 'square');
+    }
+  }, [projectId]);
 
   const spreadStart = selectedPageIndex % 2 === 0 ? selectedPageIndex : selectedPageIndex - 1;
   const leftPage = pages[spreadStart];
@@ -71,9 +80,9 @@ export default function EditorScreen() {
     setActiveSheet(null);
   };
 
-  const handleSave = () => {
-    Alert.alert('Sauvegarde', 'Projet sauvegardé !');
-    useEditorStore.getState().markSaved();
+  const handleSave = async () => {
+    await saveDraftNow();
+    Alert.alert('Sauvegarde', 'Projet sauvegardé localement !');
   };
 
   return (

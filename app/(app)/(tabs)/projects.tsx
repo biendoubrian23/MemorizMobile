@@ -47,7 +47,7 @@ export default function ProjectsScreen() {
   const renderProject = ({ item }: { item: Project }) => (
     <ProjectCard
       project={item}
-      onPress={() => router.push(`/(app)/create/setup?projectId=${item.id}`)}
+      onPress={() => router.push(`/(editor)/${item.id}`)}
     />
   );
 
@@ -211,7 +211,6 @@ function getFormatLabel(project: Project) {
   const types: Record<string, string> = {
     album: 'Album',
     magazine: 'Magazine',
-    wall_deco: 'Déco Murale',
   };
   const formats: Record<string, string> = {
     square: 'Carré',
@@ -230,8 +229,6 @@ function getProjectColors(type: string) {
   switch (type) {
     case 'magazine':
       return ['#6BB5FF', '#4ECDC4'] as const;
-    case 'wall_deco':
-      return ['#FF9A5C', '#FFD93D'] as const;
     default:
       return ['#FF6B8A', '#FF9A5C'] as const;
   }
