@@ -17,6 +17,7 @@ import { useEditorStore } from '../../src/store/editorStore';
 import { DEFAULT_LAYOUTS } from '../../editor/utils/layouts';
 import PhotoPickerSheet from './components/PhotoPickerSheet';
 import LayoutSelectorSheet from './components/LayoutSelectorSheet';
+import TemplateSelectorSheet from './components/TemplateSelectorSheet';
 import { PageLayout } from '../../src/types';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
@@ -25,7 +26,7 @@ const PAGE_WIDTH = SPREAD_WIDTH / 2;
 const PAGE_ASPECT = 1.3;
 const PAGE_HEIGHT = PAGE_WIDTH * PAGE_ASPECT;
 
-type ToolbarTab = 'layout' | 'photos' | 'text' | 'themes';
+type ToolbarTab = 'layout' | 'photos' | 'text' | 'templates';
 
 export default function EditorScreen() {
   const { projectId } = useLocalSearchParams<{ projectId: string }>();
@@ -42,6 +43,12 @@ export default function EditorScreen() {
   } = useEditorStore();
 
   const [activeSheet, setActiveSheet] = useState<ToolbarTab | null>(null);
+  const [selectedTemplateKey, setSelectedTemplateKey] = useState<string | null>(null);
+
+  const handleTemplateSelected = (templateKey: string) => {
+    setSelectedTemplateKey(templateKey);
+    setActiveSheet(null);
+  };
 
   // Charge le brouillon local quand l'écran s'ouvre
   useEffect(() => {
@@ -50,16 +57,46 @@ export default function EditorScreen() {
     }
   }, [projectId]);
 
-  const spreadStart = selectedPageIndex % 2 === 0 ? selectedPageIndex : selectedPageIndex - 1;
-  const leftPage = pages[spreadStart];
-  const rightPage = pages[spreadStart + 1];
+  // Page 0 = cover (displayed solo), rest = 2-page spreads
+  const isCoverView = selectedPageIndex === 0;
+  const spreadStart = isCoverView
+    ? 0
+    : selectedPageIndex % 2 === 0
+      ? selectedPageIndex
+      : selectedPageIndex - 1;
+  // For non-cover, spreads start at odd pairs: pages 1-2, 3-4, etc.
+  // Adjust: cover = page 0 alone, then spreads = [1,2], [3,4], ...
+  const getSpreadStart = () => {
+    if (selectedPageIndex === 0) return 0;
+    // Pages after cover: pairs starting from 1
+    const idx = selectedPageIndex;
+    if (idx % 2 === 1) return idx; // odd = left page of spread
+    return idx - 1; // even = right page, go back to odd
+  };
+  const actualSpreadStart = getSpreadStart();
+  const leftPage = pages[actualSpreadStart];
+  const rightPage = isCoverView ? null : pages[actualSpreadStart + 1];
 
-  const canGoBack = spreadStart >= 2;
-  const canGoForward = spreadStart + 2 < pages.length;
+  const canGoBack = actualSpreadStart > 0;
+  const canGoForward = isCoverView
+    ? pages.length > 1
+    : actualSpreadStart + 2 < pages.length;
 
   const navigateSpread = (dir: 'prev' | 'next') => {
-    if (dir === 'prev' && canGoBack) setSelectedPage(spreadStart - 2);
-    if (dir === 'next' && canGoForward) setSelectedPage(spreadStart + 2);
+    if (dir === 'prev') {
+      if (actualSpreadStart === 1) {
+        setSelectedPage(0); // go back to cover
+      } else if (actualSpreadStart > 1) {
+        setSelectedPage(actualSpreadStart - 2);
+      }
+    }
+    if (dir === 'next') {
+      if (isCoverView) {
+        setSelectedPage(1); // first spread after cover
+      } else if (actualSpreadStart + 2 < pages.length) {
+        setSelectedPage(actualSpreadStart + 2);
+      }
+    }
   };
 
   const handleSlotPress = (pageIdx: number, slotIdx: number) => {
@@ -89,7 +126,7 @@ export default function EditorScreen() {
     <SafeAreaView style={styles.container} edges={['top']}>
       {/* Header */}
       <View style={styles.header}>
-        <TouchableOpacity onPress={() => router.back()} style={styles.headerBtn}>
+        <TouchableOpacity onPress={() => router.replace('/(app)/(tabs)')} style={styles.headerBtn}>
           <Ionicons name="arrow-back" size={24} color={Colors.textPrimary} />
         </TouchableOpacity>
         <View style={styles.headerCenter}>
@@ -109,7 +146,9 @@ export default function EditorScreen() {
       {/* Page Indicator */}
       <View style={styles.pageIndicator}>
         <Text style={styles.pageIndicatorText}>
-          Pages {spreadStart + 1}-{Math.min(spreadStart + 2, pages.length)}
+          {isCoverView
+            ? 'Couverture'
+            : `Pages ${actualSpreadStart + 1}-${Math.min(actualSpreadStart + 2, pages.length)}`}
         </Text>
       </View>
 
@@ -127,21 +166,23 @@ export default function EditorScreen() {
           />
         </TouchableOpacity>
 
-        <View style={styles.spread}>
+        <View style={isCoverView ? styles.coverSpread : styles.spread}>
           {leftPage && (
             <PageView
               page={leftPage}
-              pageIndex={spreadStart}
-              onSlotPress={(slotIdx) => handleSlotPress(spreadStart, slotIdx)}
-              isActive={selectedPageIndex === spreadStart}
+              pageIndex={actualSpreadStart}
+              onSlotPress={(slotIdx) => handleSlotPress(actualSpreadStart, slotIdx)}
+              isActive={selectedPageIndex === actualSpreadStart}
+              isCover={isCoverView}
             />
           )}
           {rightPage && (
             <PageView
               page={rightPage}
-              pageIndex={spreadStart + 1}
-              onSlotPress={(slotIdx) => handleSlotPress(spreadStart + 1, slotIdx)}
-              isActive={selectedPageIndex === spreadStart + 1}
+              pageIndex={actualSpreadStart + 1}
+              onSlotPress={(slotIdx) => handleSlotPress(actualSpreadStart + 1, slotIdx)}
+              isActive={selectedPageIndex === actualSpreadStart + 1}
+              isCover={false}
             />
           )}
         </View>
@@ -189,7 +230,7 @@ export default function EditorScreen() {
           { key: 'layout' as ToolbarTab, icon: 'grid-outline', label: 'Mise en page' },
           { key: 'photos' as ToolbarTab, icon: 'images-outline', label: 'Photos' },
           { key: 'text' as ToolbarTab, icon: 'text-outline', label: 'Texte' },
-          { key: 'themes' as ToolbarTab, icon: 'color-palette-outline', label: 'Thèmes' },
+          { key: 'templates' as ToolbarTab, icon: 'color-palette-outline', label: 'Templates' },
         ]).map((tool) => (
           <TouchableOpacity
             key={tool.key}
@@ -224,27 +265,42 @@ export default function EditorScreen() {
           currentLayoutId={pages[selectedPageIndex]?.layoutId}
         />
       )}
+      {activeSheet === 'templates' && (
+        <TemplateSelectorSheet
+          onSelect={handleTemplateSelected}
+          onClose={() => setActiveSheet(null)}
+          currentTemplate={selectedTemplateKey}
+        />
+      )}
     </SafeAreaView>
   );
 }
 
 // ═══ Page View Component ═══
+const COVER_WIDTH = SPREAD_WIDTH * 0.7;
+const COVER_HEIGHT = COVER_WIDTH * PAGE_ASPECT;
+
 function PageView({
   page,
   pageIndex,
   onSlotPress,
   isActive,
+  isCover,
 }: {
   page: any;
   pageIndex: number;
   onSlotPress: (slotIdx: number) => void;
   isActive: boolean;
+  isCover: boolean;
 }) {
   const layout = DEFAULT_LAYOUTS.find((l) => l.id === page.layoutId) || DEFAULT_LAYOUTS[0];
 
   return (
     <TouchableOpacity
-      style={[styles.page, isActive && styles.pageActive]}
+      style={[
+        isCover ? styles.coverPage : styles.page,
+        isActive && styles.pageActive,
+      ]}
       activeOpacity={0.85}
     >
       {layout.slots.map((slot, slotIdx) => {
@@ -365,6 +421,16 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.15,
     shadowRadius: 8,
   },
+  coverSpread: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginHorizontal: Spacing.sm,
+    elevation: 6,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.2,
+    shadowRadius: 12,
+  },
   page: {
     width: PAGE_WIDTH - 24,
     height: PAGE_HEIGHT,
@@ -372,6 +438,15 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: Colors.borderLight,
     overflow: 'hidden',
+  },
+  coverPage: {
+    width: COVER_WIDTH,
+    height: COVER_HEIGHT,
+    backgroundColor: Colors.white,
+    borderWidth: 1,
+    borderColor: Colors.borderLight,
+    overflow: 'hidden',
+    borderRadius: BorderRadius.md,
   },
   pageActive: {
     borderColor: Colors.accent,

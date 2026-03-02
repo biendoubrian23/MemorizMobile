@@ -8,6 +8,7 @@ import {
   Dimensions,
   FlatList,
   RefreshControl,
+  Alert,
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -29,7 +30,7 @@ const FILTERS: { key: ProjectFilter; label: string }[] = [
 export default function ProjectsScreen() {
   const router = useRouter();
   const { user } = useAuthStore();
-  const { projects, filter, isLoading, fetchProjects, setFilter, getFilteredProjects } =
+  const { projects, filter, isLoading, fetchProjects, setFilter, getFilteredProjects, deleteProject } =
     useProjectStore();
 
   useEffect(() => {
@@ -44,10 +45,32 @@ export default function ProjectsScreen() {
     if (user?.id) fetchProjects(user.id);
   };
 
+  const handleDelete = (project: Project) => {
+    Alert.alert(
+      'Supprimer le projet',
+      `Êtes-vous sûr de vouloir supprimer "${project.title}" ? Cette action est irréversible.`,
+      [
+        { text: 'Annuler', style: 'cancel' },
+        {
+          text: 'Supprimer',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              await deleteProject(project.id);
+            } catch (error) {
+              Alert.alert('Erreur', 'Impossible de supprimer le projet.');
+            }
+          },
+        },
+      ]
+    );
+  };
+
   const renderProject = ({ item }: { item: Project }) => (
     <ProjectCard
       project={item}
       onPress={() => router.push(`/(editor)/${item.id}`)}
+      onDelete={() => handleDelete(item)}
     />
   );
 
@@ -122,13 +145,31 @@ export default function ProjectsScreen() {
   );
 }
 
+// ═══ Helpers ═══
+function formatRelativeDate(dateString: string): string {
+  const date = new Date(dateString);
+  const now = new Date();
+  const diffMs = now.getTime() - date.getTime();
+  const diffMin = Math.floor(diffMs / 60000);
+  const diffHours = Math.floor(diffMs / 3600000);
+  const diffDays = Math.floor(diffMs / 86400000);
+
+  if (diffMin < 1) return "À l'instant";
+  if (diffMin < 60) return `Il y a ${diffMin} min`;
+  if (diffHours < 24) return `Il y a ${diffHours}h`;
+  if (diffDays < 7) return `Il y a ${diffDays}j`;
+  return date.toLocaleDateString('fr-FR', { day: 'numeric', month: 'short', year: 'numeric' });
+}
+
 // ═══ Project Card Component ═══
 function ProjectCard({
   project,
   onPress,
+  onDelete,
 }: {
   project: Project;
   onPress: () => void;
+  onDelete: () => void;
 }) {
   const statusBadge = getStatusBadge(project.status);
   const formatLabel = getFormatLabel(project);
@@ -142,6 +183,18 @@ function ProjectCard({
         start={{ x: 0, y: 0 }}
         end={{ x: 1, y: 1 }}
       >
+        {/* Delete button */}
+        <TouchableOpacity
+          style={styles.deleteButton}
+          onPress={(e) => {
+            e.stopPropagation();
+            onDelete();
+          }}
+          hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+        >
+          <Ionicons name="trash-outline" size={18} color={Colors.white} />
+        </TouchableOpacity>
+
         {/* Status badge */}
         <View style={[styles.statusBadge, { backgroundColor: statusBadge.bg }]}>
           <View style={[styles.statusDot, { backgroundColor: statusBadge.dotColor }]} />
@@ -153,10 +206,17 @@ function ProjectCard({
 
       {/* Card info */}
       <View style={styles.cardInfo}>
-        <Text style={styles.cardTitle}>{project.title}</Text>
-        <Text style={styles.cardMeta}>
-          {formatLabel} • {project.page_count} Pages
-        </Text>
+        <View style={styles.cardTitleRow}>
+          <View style={{ flex: 1 }}>
+            <Text style={styles.cardTitle}>{project.title}</Text>
+            <Text style={styles.cardMeta}>
+              {formatLabel} • {project.page_count} Pages
+            </Text>
+          </View>
+          <Text style={styles.cardDate}>
+            {formatRelativeDate(project.updated_at)}
+          </Text>
+        </View>
 
         <View style={styles.cardFooter}>
           <View style={styles.avatarGroup}>
@@ -300,9 +360,18 @@ const styles = StyleSheet.create({
   },
   cardImage: {
     height: 180,
-    justifyContent: 'flex-start',
-    alignItems: 'flex-end',
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'flex-start',
     padding: Spacing.md,
+  },
+  deleteButton: {
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+    backgroundColor: 'rgba(0,0,0,0.35)',
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   statusBadge: {
     flexDirection: 'row',
@@ -324,6 +393,12 @@ const styles = StyleSheet.create({
   cardInfo: {
     padding: Spacing.lg,
   },
+  cardTitleRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'flex-start',
+    marginBottom: Spacing.md,
+  },
   cardTitle: {
     ...Typography.h4,
     color: Colors.textPrimary,
@@ -332,7 +407,11 @@ const styles = StyleSheet.create({
   cardMeta: {
     ...Typography.bodySmall,
     color: Colors.textSecondary,
-    marginBottom: Spacing.md,
+  },
+  cardDate: {
+    ...Typography.caption,
+    color: Colors.textTertiary,
+    marginTop: 2,
   },
   cardFooter: {
     flexDirection: 'row',
