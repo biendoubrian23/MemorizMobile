@@ -15,6 +15,8 @@ interface AuthState {
   signIn: (email: string, password: string) => Promise<void>;
   signOut: () => Promise<void>;
   setSession: (session: Session | null) => void;
+  updateProfile: (data: { firstName?: string; lastName?: string; phone?: string; birthDate?: string }) => Promise<void>;
+  refreshProfile: () => Promise<void>;
 }
 
 export const useAuthStore = create<AuthState>((set, get) => ({
@@ -36,6 +38,8 @@ export const useAuthStore = create<AuthState>((set, get) => ({
             firstName: profile?.first_name ?? undefined,
             lastName: profile?.last_name ?? undefined,
             avatarUrl: profile?.avatar_url ?? undefined,
+            phone: profile?.phone ?? undefined,
+            birthDate: profile?.birth_date ?? undefined,
           },
           isInitialized: true,
         });
@@ -59,6 +63,8 @@ export const useAuthStore = create<AuthState>((set, get) => ({
             firstName: profile?.first_name ?? undefined,
             lastName: profile?.last_name ?? undefined,
             avatarUrl: profile?.avatar_url ?? undefined,
+            phone: profile?.phone ?? undefined,
+            birthDate: profile?.birth_date ?? undefined,
           },
         });
       } else {
@@ -122,6 +128,52 @@ export const useAuthStore = create<AuthState>((set, get) => ({
 
   setSession: (session) => {
     set({ session });
+  },
+
+  updateProfile: async (data) => {
+    const { user } = get();
+    if (!user) throw new Error('Non connecté');
+
+    const updateData: any = {};
+    if (data.firstName !== undefined) updateData.first_name = data.firstName;
+    if (data.lastName !== undefined) updateData.last_name = data.lastName;
+    if (data.phone !== undefined) updateData.phone = data.phone;
+    if (data.birthDate !== undefined) updateData.birth_date = data.birthDate;
+
+    const { error } = await supabase
+      .from('profiles')
+      .update(updateData)
+      .eq('id', user.id);
+
+    if (error) throw error;
+
+    set({
+      user: {
+        ...user,
+        firstName: data.firstName ?? user.firstName,
+        lastName: data.lastName ?? user.lastName,
+        phone: data.phone ?? user.phone,
+        birthDate: data.birthDate ?? user.birthDate,
+      },
+    });
+  },
+
+  refreshProfile: async () => {
+    const { user } = get();
+    if (!user) return;
+    const profile = await fetchProfile(user.id);
+    if (profile) {
+      set({
+        user: {
+          ...user,
+          firstName: profile.first_name ?? undefined,
+          lastName: profile.last_name ?? undefined,
+          avatarUrl: profile.avatar_url ?? undefined,
+          phone: profile.phone ?? undefined,
+          birthDate: profile.birth_date ?? undefined,
+        },
+      });
+    }
   },
 }));
 

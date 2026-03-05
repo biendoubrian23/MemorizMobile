@@ -12,7 +12,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
-import { router } from 'expo-router';
+import { router, useLocalSearchParams } from 'expo-router';
 import { Colors, Typography, Spacing, BorderRadius } from '../../../src/theme';
 import { Button } from '../../../src/components/ui';
 import { useProjectStore } from '../../../src/store/projectStore';
@@ -75,7 +75,7 @@ function Preview3D({ source }: { source: any }) {
 type ProductType = 'album' | 'magazine';
 type BindingType = 'hardcover' | 'softcover' | 'lay_flat';
 type FormatType = 'a4_portrait' | 'a4_landscape' | 'square';
-type PaperType = 'standard' | 'cream_satin';
+type PaperType = 'standard' | 'lisse_satin' | 'doux';
 type LaminationType = 'glossy' | 'matte' | 'soft_touch';
 type ColorMode = 'color' | 'black_white';
 
@@ -171,8 +171,9 @@ const FORMAT_OPTIONS: { key: FormatType; label: string; ratio: string }[] = [
 ];
 
 const PAPER_OPTIONS: { key: PaperType; label: string; desc: string }[] = [
+  { key: 'doux', label: 'Doux', desc: 'Toucher velouté et chaleureux' },
+  { key: 'lisse_satin', label: 'Lisse Satin', desc: 'Finition satinée et élégante' },
   { key: 'standard', label: 'Standard', desc: 'Papier blanc classique' },
-  { key: 'cream_satin', label: 'Satiné', desc: 'Finition satinée douce' },
 ];
 
 const PELLICULAGE_OPTIONS: { key: LaminationType; label: string }[] = [
@@ -188,8 +189,9 @@ const COLOR_OPTIONS: { key: ColorMode; label: string }[] = [
 
 export default function CreateSetupScreen() {
   const { user } = useAuthStore();
-  const { createProject } = useProjectStore();
+  const { createProject, projects } = useProjectStore();
   const { initEditor } = useEditorStore();
+  const { themeId } = useLocalSearchParams<{ themeId?: string }>();
 
   const [step, setStep] = useState(0);
   const [productType, setProductType] = useState<ProductType>('album');
@@ -221,9 +223,10 @@ export default function CreateSetupScreen() {
       // Create project
       setIsCreating(true);
       try {
+        const nextNumber = projects.length + 1;
         const created = await createProject({
           user_id: user!.id,
-          title: 'Mon Souvenir',
+          title: `Mon Memoriz ${nextNumber}`,
           product_type: productType,
           binding_type: bindingType,
           format,
@@ -233,12 +236,24 @@ export default function CreateSetupScreen() {
           page_count: 24,
           pages_data: {},
           status: 'draft',
+          ...(themeId ? { theme_id: themeId } : {}),
         });
+        // Résout l'image du template sélectionné pour la couverture
+        let coverImageUri: string | undefined;
+        if (selectedTemplate) {
+          const allTemplates = [...ALBUM_TEMPLATES, ...MAGAZINE_TEMPLATES];
+          const tpl = allTemplates.find((t) => t.key === selectedTemplate);
+          if (tpl) {
+            const resolved = Image.resolveAssetSource(tpl.source);
+            coverImageUri = resolved?.uri;
+          }
+        }
         // Initialise l'éditeur avec le format choisi puis redirige
-        initEditor(created.id, format);
-        router.replace(`/(editor)/${created.id}`);
+        await initEditor(created.id, format, undefined, coverImageUri);
+        router.replace(`/(editor)/${created.id}?format=${format}`);
       } catch (err: any) {
-        Alert.alert('Erreur', err.message || 'Impossible de créer le projet');
+        console.error('[Setup] createProject error:', err);
+        Alert.alert('Erreur', err.message || JSON.stringify(err) || 'Impossible de créer le projet');
       } finally {
         setIsCreating(false);
       }

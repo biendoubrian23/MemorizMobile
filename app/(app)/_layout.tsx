@@ -21,6 +21,24 @@ export default function AppLayout() {
           animation: 'slide_from_bottom',
         }}
       />
+      <Stack.Screen
+        name="thematiques"
+        options={{
+          animation: 'slide_from_right',
+        }}
+      />
+      <Stack.Screen
+        name="account"
+        options={{
+          animation: 'slide_from_right',
+        }}
+      />
+      <Stack.Screen
+        name="checkout"
+        options={{
+          animation: 'slide_from_right',
+        }}
+      />
     </Stack>
   );
 }

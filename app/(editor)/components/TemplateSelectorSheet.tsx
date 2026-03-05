@@ -15,7 +15,7 @@ const { width: SCREEN_WIDTH } = Dimensions.get('window');
 const CARD_WIDTH = (SCREEN_WIDTH - Spacing.xl * 2 - Spacing.md) / 2;
 
 // ═══ Template Images ═══
-const ALBUM_TEMPLATES: { key: string; source: any }[] = [
+export const ALBUM_TEMPLATES: { key: string; source: any }[] = [
   { key: 'album-1', source: require('../../../assets/images/album/album (1).jpeg') },
   { key: 'album-2', source: require('../../../assets/images/album/album (2).jpeg') },
   { key: 'album-3', source: require('../../../assets/images/album/album (3).jpeg') },
@@ -39,7 +39,7 @@ const ALBUM_TEMPLATES: { key: string; source: any }[] = [
   { key: 'album-21', source: require('../../../assets/images/album/album (21).jpeg') },
 ];
 
-const MAGAZINE_TEMPLATES: { key: string; source: any }[] = [
+export const MAGAZINE_TEMPLATES: { key: string; source: any }[] = [
   { key: 'magazine-1', source: require('../../../assets/images/magazine/magazine (1).jpeg') },
   { key: 'magazine-2', source: require('../../../assets/images/magazine/magazine (2).jpeg') },
   { key: 'magazine-3', source: require('../../../assets/images/magazine/magazine (3).jpeg') },
@@ -69,7 +69,7 @@ export default function TemplateSelectorSheet({ onSelect, onClose, currentTempla
     <View style={styles.container}>
       {/* Header */}
       <View style={styles.header}>
-        <Text style={styles.title}>Templates</Text>
+        <Text style={styles.title}>Couverture</Text>
         <TouchableOpacity onPress={onClose} style={styles.closeBtn}>
           <Ionicons name="close" size={22} color={Colors.textSecondary} />
         </TouchableOpacity>

@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useCallback } from 'react';
 import {
   View,
   Text,
@@ -7,14 +7,18 @@ import {
   TouchableOpacity,
   TextInput,
   Alert,
+  Image,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
+import { router } from 'expo-router';
+import { useFocusEffect } from '@react-navigation/native';
 import { Colors, Typography, Spacing, BorderRadius } from '../../../src/theme';
 import { Button } from '../../../src/components/ui';
 import { useAuthStore } from '../../../src/store/authStore';
 import { useCartStore } from '../../../src/store/cartStore';
+import { loadDraft } from '../../../src/services/draftStorage';
 import { CartItemWithProject } from '../../../src/types';
 
 export default function CartScreen() {
@@ -33,10 +37,56 @@ export default function CartScreen() {
   } = useCartStore();
 
   const [promoInput, setPromoInput] = useState('');
+  // Map projectId → cover URI from local drafts
+  const [cartCovers, setCartCovers] = useState<Record<string, string>>({});
+
+  const loadCartCovers = useCallback(async (cartItems: CartItemWithProject[]) => {
+    const covers: Record<string, string> = {};
+    await Promise.all(
+      cartItems.map(async (item) => {
+        const pid = item.project_id;
+        // Si le projet a déjà une cover_image_url, l'utiliser
+        if (item.project?.cover_image_url) {
+          covers[pid] = item.project.cover_image_url;
+          return;
+        }
+        try {
+          const draft = await loadDraft(pid);
+          if (draft?.pages?.length) {
+            for (const page of draft.pages) {
+              if (Array.isArray(page?.slots)) {
+                for (const slot of page.slots) {
+                  if (slot?.photoUri) { covers[pid] = slot.photoUri; return; }
+                }
+              }
+              if (Array.isArray((page as any)?.elements)) {
+                for (const el of (page as any).elements) {
+                  if (el?.type === 'image' && el?.imageUri) { covers[pid] = el.imageUri; return; }
+                }
+              }
+            }
+          }
+        } catch { /* ignore */ }
+      }),
+    );
+    setCartCovers(covers);
+  }, []);
 
   useEffect(() => {
     if (user?.id) fetchCart(user.id);
   }, [user?.id]);
+
+  // Recharger les covers à chaque focus sur l'onglet panier
+  useFocusEffect(
+    useCallback(() => {
+      if (user?.id) fetchCart(user.id);
+      if (items.length > 0) loadCartCovers(items);
+    }, [user?.id, items.length]),
+  );
+
+  useEffect(() => {
+    if (items.length > 0) loadCartCovers(items);
+  }, [items]);
 
   const handleApplyPromo = async () => {
     try {
@@ -48,7 +98,7 @@ export default function CartScreen() {
   };
 
   const handlePayment = () => {
-    Alert.alert('Paiement', 'Le paiement sera intégré prochainement (Stripe & Apple Pay).');
+    router.push('/(app)/checkout/summary');
   };
 
   return (
@@ -82,6 +132,7 @@ export default function CartScreen() {
               <CartItemCard
                 key={item.id}
                 item={item}
+                coverUri={cartCovers[item.project_id]}
                 onUpdateQuantity={(qty) => updateQuantity(item.id, qty)}
                 onRemove={() => removeItem(item.id)}
               />
@@ -160,10 +211,12 @@ export default function CartScreen() {
 // ═══ Cart Item Card ═══
 function CartItemCard({
   item,
+  coverUri,
   onUpdateQuantity,
   onRemove,
 }: {
   item: CartItemWithProject;
+  coverUri?: string;
   onUpdateQuantity: (qty: number) => void;
   onRemove: () => void;
 }) {
@@ -174,20 +227,31 @@ function CartItemCard({
     ? `${item.project.page_count} Pages • Papier Mat.`
     : '';
 
+  // Récupérer l'image de couverture
+  const imageUri = coverUri || item.project?.cover_image_url || null;
+
   return (
     <View style={styles.cartItem}>
       {/* Thumbnail */}
-      <LinearGradient
-        colors={['#FF9A5C', '#FF6B8A']}
-        style={styles.cartItemImage}
-        start={{ x: 0, y: 0 }}
-        end={{ x: 1, y: 1 }}
-      />
+      {imageUri ? (
+        <Image
+          source={{ uri: imageUri }}
+          style={styles.cartItemImage}
+          resizeMode="cover"
+        />
+      ) : (
+        <LinearGradient
+          colors={['#FF9A5C', '#FF6B8A']}
+          style={styles.cartItemImage}
+          start={{ x: 0, y: 0 }}
+          end={{ x: 1, y: 1 }}
+        />
+      )}
 
       <View style={styles.cartItemInfo}>
         <View style={styles.cartItemHeader}>
           <Text style={styles.cartItemTitle} numberOfLines={1}>
-            {item.project?.title || 'Mon Souvenir'}
+            {item.project?.title || 'Mon Memoriz'}
           </Text>
           <TouchableOpacity onPress={onRemove}>
             <Ionicons name="trash-outline" size={18} color={Colors.textTertiary} />

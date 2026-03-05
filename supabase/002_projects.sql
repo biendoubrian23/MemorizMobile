@@ -20,7 +20,7 @@ EXCEPTION WHEN duplicate_object THEN NULL;
 END $$;
 
 DO $$ BEGIN
-  CREATE TYPE paper_type AS ENUM ('standard', 'cream_satin');
+  CREATE TYPE paper_type AS ENUM ('standard', 'lisse_satin', 'doux');
 EXCEPTION WHEN duplicate_object THEN NULL;
 END $$;
 
@@ -67,28 +67,33 @@ CREATE INDEX IF NOT EXISTS idx_projects_updated_at ON public.projects(updated_at
 ALTER TABLE public.projects ENABLE ROW LEVEL SECURITY;
 
 -- Politiques RLS
+DROP POLICY IF EXISTS "Les utilisateurs peuvent voir leurs projets" ON public.projects;
 CREATE POLICY "Les utilisateurs peuvent voir leurs projets"
   ON public.projects
   FOR SELECT
   USING (auth.uid() = user_id);
 
+DROP POLICY IF EXISTS "Les utilisateurs peuvent créer des projets" ON public.projects;
 CREATE POLICY "Les utilisateurs peuvent créer des projets"
   ON public.projects
   FOR INSERT
   WITH CHECK (auth.uid() = user_id);
 
+DROP POLICY IF EXISTS "Les utilisateurs peuvent modifier leurs projets" ON public.projects;
 CREATE POLICY "Les utilisateurs peuvent modifier leurs projets"
   ON public.projects
   FOR UPDATE
   USING (auth.uid() = user_id)
   WITH CHECK (auth.uid() = user_id);
 
+DROP POLICY IF EXISTS "Les utilisateurs peuvent supprimer leurs projets" ON public.projects;
 CREATE POLICY "Les utilisateurs peuvent supprimer leurs projets"
   ON public.projects
   FOR DELETE
   USING (auth.uid() = user_id);
 
 -- Trigger updated_at
+DROP TRIGGER IF EXISTS on_projects_updated ON public.projects;
 CREATE TRIGGER on_projects_updated
   BEFORE UPDATE ON public.projects
   FOR EACH ROW

@@ -9,6 +9,7 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
+import { router } from 'expo-router';
 import { Colors, Typography, Spacing, BorderRadius } from '../../../src/theme';
 import { useAuthStore } from '../../../src/store/authStore';
 
@@ -33,25 +34,17 @@ export default function AccountScreen() {
     {
       title: 'Mon Compte',
       items: [
-        { icon: 'person-outline', label: 'Informations personnelles' },
-        { icon: 'home-outline', label: 'Adresses de livraison' },
+        { icon: 'person-outline', label: 'Informations personnelles', onPress: () => router.push('/(app)/account/personal-info') },
+        { icon: 'home-outline', label: 'Adresses de livraison', onPress: () => router.push('/(app)/account/addresses') },
         { icon: 'card-outline', label: 'Moyens de paiement' },
         { icon: 'receipt-outline', label: 'Historique des commandes' },
       ],
     },
     {
-      title: 'Préférences',
-      items: [
-        { icon: 'notifications-outline', label: 'Notifications' },
-        { icon: 'color-palette-outline', label: 'Apparence' },
-        { icon: 'language-outline', label: 'Langue' },
-      ],
-    },
-    {
       title: 'Support',
       items: [
-        { icon: 'help-circle-outline', label: 'Aide & FAQ' },
-        { icon: 'chatbubble-outline', label: 'Nous contacter' },
+        { icon: 'help-circle-outline', label: 'Aide & FAQ', onPress: () => router.push('/(app)/account/faq') },
+        { icon: 'chatbubble-outline', label: 'Nous contacter', onPress: () => router.push('/(app)/account/contact') },
         { icon: 'star-outline', label: 'Noter l\'application' },
       ],
     },
@@ -92,19 +85,10 @@ export default function AccountScreen() {
             </Text>
             <Text style={styles.profileEmail}>{user?.email || ''}</Text>
           </View>
-          <TouchableOpacity style={styles.editBtn}>
+          <TouchableOpacity style={styles.editBtn} onPress={() => router.push('/(app)/account/personal-info')}>
             <Ionicons name="create-outline" size={20} color={Colors.accent} />
           </TouchableOpacity>
         </View>
-
-        {/* Membership Banner */}
-        <TouchableOpacity style={styles.memberBanner} activeOpacity={0.85}>
-          <View>
-            <Text style={styles.memberTitle}>Memoriz Premium</Text>
-            <Text style={styles.memberSub}>Livraison gratuite & réductions exclusives</Text>
-          </View>
-          <Ionicons name="chevron-forward" size={20} color={Colors.white} />
-        </TouchableOpacity>
 
         {/* Settings Sections */}
         {sections.map((section, sectionIdx) => (
@@ -206,27 +190,6 @@ const styles = StyleSheet.create({
   },
   editBtn: {
     padding: Spacing.sm,
-  },
-
-  // Membership
-  memberBanner: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    backgroundColor: Colors.accent,
-    borderRadius: BorderRadius.xl,
-    padding: Spacing.lg,
-    marginBottom: Spacing['2xl'],
-  },
-  memberTitle: {
-    ...Typography.body,
-    fontWeight: '700',
-    color: Colors.white,
-  },
-  memberSub: {
-    ...Typography.caption,
-    color: 'rgba(255,255,255,0.8)',
-    marginTop: 2,
   },
 
   // Section
