@@ -64,6 +64,16 @@ export interface PageData {
   layoutId: string;
   slots: PageSlotData[];
   elements: PageElement[];
+  // Page-level style overrides
+  backgroundColor?: string;
+  slotBorderRadius?: number;     // border radius of individual slots (0 = square)
+  slotSpacing?: number;          // gap between slots in % (0 = no gap)
+  slotBorderWidth?: number;      // border width around each slot
+  slotBorderColor?: string;      // border color for slots
+  // Spread image: single image spanning two pages (set on left page of a spread)
+  isSpreadImage?: boolean;
+  // Achevé d'imprimer: locked page, non-editable
+  isAchevePage?: boolean;
 }
 
 export interface PageSlotData {
@@ -84,6 +94,13 @@ export interface PageSlotData {
   imageScale?: number;
   imageOffsetX?: number;
   imageOffsetY?: number;
+  // Image adjustments
+  brightness?: number;    // -100 to 100 (0 = normal)
+  contrast?: number;      // -100 to 100 (0 = normal)
+  saturation?: number;    // -100 to 100 (0 = normal)
+  warmth?: number;        // -100 to 100 (0 = normal)
+  sharpness?: number;     // 0 to 100 (0 = normal)
+  vignette?: number;      // 0 to 100 (0 = none)
 }
 
 // ═══ Free-form element on a page ═══

@@ -1,4 +1,4 @@
-import React, { useCallback, useState, useEffect, useRef } from 'react';
+﻿import React, { useCallback, useState, useEffect, useRef, useMemo } from 'react';
 import {
   View,
   Text,
@@ -13,6 +13,9 @@ import {
   Pressable,
   ScrollView,
   BackHandler,
+  PanResponder,
+  GestureResponderEvent,
+  LayoutChangeEvent,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
@@ -24,14 +27,29 @@ import { useAuthStore } from '../../src/store/authStore';
 import { useProjectStore } from '../../src/store/projectStore';
 import { calculateUnitPrice } from '../../src/utils/pricing';
 import { DEFAULT_LAYOUTS } from '../../editor/utils/layouts';
-import PhotoPickerSheet from './components/PhotoPickerSheet';
-import LayoutSelectorSheet from './components/LayoutSelectorSheet';
+import PhotoToolsSheet from './components/PhotoToolsSheet';
+import LayoutToolsSheet from './components/LayoutToolsSheet';
 import TemplateSelectorSheet, { ALBUM_TEMPLATES, MAGAZINE_TEMPLATES } from './components/TemplateSelectorSheet';
 import InteriorTemplateSelectorSheet, { INTERIOR_ALBUM_TEMPLATES, INTERIOR_MAGAZINE_TEMPLATES } from './components/InteriorTemplateSelectorSheet';
+import { LinearGradient } from 'expo-linear-gradient';
 import TextStylesSheet, { TEXT_STYLE_PRESETS } from './components/TextStylesSheet';
 import TextFormattingToolbar from './components/TextFormattingToolbar';
 import DraggableElement from './components/DraggableElement';
+import FilteredImage from './components/FilteredImage';
 import { PageLayout, TextStylePreset, PageSlotData, PageElement } from '../../src/types';
+
+// Placeholder image for empty photo slots
+const GRID_PLACEHOLDER = require('../../assets/images/grid-placeholder.png');
+
+// French month names for achevé d'imprimer
+const FRENCH_MONTHS = [
+  'janvier', 'f\u00e9vrier', 'mars', 'avril', 'mai', 'juin',
+  'juillet', 'ao\u00fbt', 'septembre', 'octobre', 'novembre', 'd\u00e9cembre',
+];
+function getAcheveDate(): string {
+  const now = new Date();
+  return `${FRENCH_MONTHS[now.getMonth()]} ${now.getFullYear()}`;
+}
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 const SPREAD_WIDTH = SCREEN_WIDTH - Spacing.xl * 2;
@@ -61,12 +79,14 @@ export default function EditorScreen() {
     isSaved,
     format: storeFormat,
     setSelectedPage,
+    setZoomLevel: storeSetZoomLevel,
     setSelectedSlot,
     setSelectedElementId,
     updateSlotPhoto,
     updateSlotText,
     updateSlotTextStyle,
     updatePageLayout,
+    updatePageStyle,
     addElement,
     updateElement,
     removeElement,
@@ -80,6 +100,9 @@ export default function EditorScreen() {
     canUndo,
     canRedo,
   } = useEditorStore();
+  const removePagePair = useEditorStore((s) => s.removePagePair);
+  const addPage = useEditorStore((s) => s.addPage);
+  const toggleSpreadImage = useEditorStore((s) => s.toggleSpreadImage);
 
   const { user } = useAuthStore();
   const { currentProject, setCurrentProject, projects } = useProjectStore();
@@ -97,6 +120,12 @@ export default function EditorScreen() {
   const currentFormat = storeFormat || formatParam || 'square';
   const PAGE_ASPECT = FORMAT_ASPECTS[currentFormat] || 1;
   const PAGE_HEIGHT = PAGE_WIDTH_BASE * PAGE_ASPECT;
+
+  // ── Binding type → spine (tranche) visibility ──
+  const bindingType = currentProject?.binding_type ?? 'hardcover';
+  const hasSpine = bindingType === 'hardcover' || bindingType === 'softcover';
+  // Spine width proportional to page count (≈8px for 24 pages, grows with more pages)
+  const spineWidth = hasSpine ? Math.max(8, Math.round((pages.length / 24) * 12)) : 0;
   const PAGE_WIDTH = PAGE_WIDTH_BASE;
 
   // ── UI state ──
@@ -104,12 +133,45 @@ export default function EditorScreen() {
   const [selectedTemplateKey, setSelectedTemplateKey] = useState<string | null>(null);
   const [isStackedView, setIsStackedView] = useState(false);
   const [keyboardVisible, setKeyboardVisible] = useState(false);
+  const [showPageHighlight, setShowPageHighlight] = useState(true);
+
+  // Read zoom from store (persisted)
+  const zoomLevel = useEditorStore((s) => s.zoomLevel);
+  const setZoomLevel = (z: number) => storeSetZoomLevel(z);
+
+  // ── Zoom track drag ──
+  const zoomTrackRef = useRef<View>(null);
+  const zoomTrackWidth = useRef(120);
+  const zoomTrackPageX = useRef(0);
+
+  const zoomPanResponder = useMemo(() => {
+    const clampZoom = (pageX: number) => {
+      const x = pageX - zoomTrackPageX.current;
+      const ratio = Math.max(0, Math.min(1, x / zoomTrackWidth.current));
+      return +(0.5 + ratio * 2).toFixed(2); // 0.5 → 2.5
+    };
+    return PanResponder.create({
+      onStartShouldSetPanResponder: () => true,
+      onMoveShouldSetPanResponder: () => true,
+      onPanResponderGrant: (e) => {
+        // Re-measure position on grant (most reliable moment)
+        zoomTrackRef.current?.measureInWindow((x) => {
+          if (x != null) zoomTrackPageX.current = x;
+        });
+        setZoomLevel(clampZoom(e.nativeEvent.pageX));
+      },
+      onPanResponderMove: (e) => {
+        setZoomLevel(clampZoom(e.nativeEvent.pageX));
+      },
+    });
+  }, []);
 
   // Track whether photo picker was opened for a specific slot or "free"
   const [photoTargetSlot, setPhotoTargetSlot] = useState<{
     pageIdx: number;
     slotIdx: number;
   } | null>(null);
+  const [photoInitialTab, setPhotoInitialTab] = useState<'pellicule' | 'recadrage'>('pellicule');
 
   // ── Text editing (works for both slots & free elements) ──
   const [isEditingText, setIsEditingText] = useState(false);
@@ -180,30 +242,51 @@ export default function EditorScreen() {
   }, [projectId]);
 
   // ═══════════════ Spread / pagination ═══════════════
-  const isCoverView = selectedPageIndex === 0;
+  const backCoverIndex = pages.length - 1;
+  const isCoverView = selectedPageIndex === 0 || selectedPageIndex === backCoverIndex;
   const getSpreadStart = () => {
-    if (selectedPageIndex === 0) return 0;
+    if (isCoverView) return 0;
     return selectedPageIndex % 2 === 1 ? selectedPageIndex : selectedPageIndex - 1;
   };
   const actualSpreadStart = getSpreadStart();
-  const leftPage = pages[actualSpreadStart];
-  const rightPage = isCoverView ? null : pages[actualSpreadStart + 1];
-  const canGoBack = actualSpreadStart > 0;
+  const leftPage = isCoverView ? pages[0] : pages[actualSpreadStart];
+  const rightPage = isCoverView ? pages[backCoverIndex] : pages[actualSpreadStart + 1];
+  const canGoBack = !isCoverView; // From any interior spread, can always go back
   const canGoForward = isCoverView
-    ? pages.length > 1
-    : actualSpreadStart + 2 < pages.length;
+    ? pages.length > 2 // There exist interior pages
+    : actualSpreadStart + 2 < backCoverIndex; // More interior pages before back cover
 
   const navigateSpread = (dir: 'prev' | 'next') => {
     if (dir === 'prev') {
-      setSelectedPage(actualSpreadStart === 1 ? 0 : Math.max(0, actualSpreadStart - 2));
+      // Go to previous interior spread, or to covers
+      if (actualSpreadStart <= 1) {
+        setSelectedPage(0); // Go to cover spread
+      } else {
+        setSelectedPage(Math.max(1, actualSpreadStart - 2));
+      }
     } else {
-      setSelectedPage(isCoverView ? 1 : Math.min(pages.length - 1, actualSpreadStart + 2));
+      if (isCoverView) {
+        setSelectedPage(1); // First interior spread
+      } else {
+        setSelectedPage(Math.min(backCoverIndex - 1, actualSpreadStart + 2));
+      }
     }
   };
 
+  // ── Thumbnail order: front cover, back cover, then interiors ──
+  const thumbnailOrder = useMemo(() => {
+    if (pages.length < 2) return pages.map((_, i) => i);
+    const order = [0, pages.length - 1]; // covers first
+    for (let i = 1; i < pages.length - 1; i++) order.push(i); // then interiors
+    return order;
+  }, [pages.length]);
+
   // ═══════════════ Slot handlers ═══════════════
   const handleSlotPress = (pageIdx: number, slotIdx: number) => {
+    // Achevé pages are locked — ignore
+    if (pages[pageIdx]?.isAchevePage) return;
     setSelectedElementId(null);
+    setShowPageHighlight(true);
     const page = pages[pageIdx];
     const layout =
       DEFAULT_LAYOUTS.find((l) => l.id === page.layoutId) || DEFAULT_LAYOUTS[0];
@@ -215,6 +298,9 @@ export default function EditorScreen() {
       setPhotoTargetSlot({ pageIdx, slotIdx });
       setSelectedSlot(slotIdx);
       setSelectedPage(pageIdx);
+      // If slot already has a photo, open on recadrage; otherwise pellicule
+      const slotData = pages[pageIdx]?.slots[slotIdx];
+      setPhotoInitialTab(slotData?.photoUri ? 'recadrage' : 'pellicule');
       setActiveSheet('photos');
     }
   };
@@ -276,6 +362,7 @@ export default function EditorScreen() {
         if (isEditingText) handleValidateText();
         setSelectedPage(pageIdx);
         setSelectedElementId(element.id);
+        setShowPageHighlight(true);
       }
     },
     [selectedElementId, selectedPageIndex, pages, isEditingText],
@@ -284,6 +371,14 @@ export default function EditorScreen() {
   const handleCanvasPress = () => {
     if (selectedElementId) setSelectedElementId(null);
     if (isEditingText) handleValidateText();
+    setShowPageHighlight(true);
+  };
+
+  /** Tap on the empty area around pages → deselect page highlight */
+  const handleBackgroundPress = () => {
+    if (selectedElementId) setSelectedElementId(null);
+    if (isEditingText) handleValidateText();
+    setShowPageHighlight(false);
   };
 
   // ═══════════════ Text preset → free element ═══════════════
@@ -380,12 +475,30 @@ export default function EditorScreen() {
 
   const handleOpenPhotos = () => {
     setPhotoTargetSlot(null);
+    setPhotoInitialTab('pellicule');
     setActiveSheet(activeSheet === 'photos' ? null : 'photos');
   };
 
   // ═══════════════ Layout / Template ═══════════════
   const handleLayoutSelected = (layout: PageLayout) => {
     updatePageLayout(selectedPageIndex, layout);
+    // Apply default border & spacing for multi-slot grids (like a real album)
+    const currentPage = pages[selectedPageIndex];
+    if (layout.slots.length > 1) {
+      const defaults: Record<string, number> = {};
+      if (currentPage?.slotBorderWidth === undefined || currentPage.slotBorderWidth === 0) {
+        defaults.slotBorderWidth = 2;
+      }
+      if (currentPage?.slotSpacing === undefined || currentPage.slotSpacing === 0) {
+        defaults.slotSpacing = 1;
+      }
+      if (currentPage?.slotBorderRadius === undefined || currentPage.slotBorderRadius === 0) {
+        defaults.slotBorderRadius = 4;
+      }
+      if (Object.keys(defaults).length > 0) {
+        updatePageStyle(selectedPageIndex, defaults);
+      }
+    }
     setActiveSheet(null);
   };
 
@@ -495,6 +608,13 @@ export default function EditorScreen() {
   const stackedPageWidth = SCREEN_WIDTH * 0.65;
   const stackedPageHeight = stackedPageWidth * PAGE_ASPECT;
 
+  // ── Zoomed page dimensions ──
+  const zoomedPageWidth = PAGE_WIDTH * zoomLevel;
+  const zoomedPageHeight = PAGE_HEIGHT * zoomLevel;
+  const zoomedStackedW = stackedPageWidth * zoomLevel;
+  const zoomedStackedH = stackedPageHeight * zoomLevel;
+  const zoomedSpineWidth = spineWidth * zoomLevel;
+
   // ═══════════════════════════════════════════════
   //  RENDER
   // ═══════════════════════════════════════════════
@@ -536,79 +656,267 @@ export default function EditorScreen() {
         </TouchableOpacity>
       </View>
 
-      {/* ─── Page indicator + toggle ─── */}
+      {/* ─── Page indicator + toggle + zoom ─── */}
       <View style={styles.pageIndicatorRow}>
         <Text style={styles.pageIndicatorText}>
           {isCoverView
-            ? 'Couverture'
-            : `Pages ${actualSpreadStart + 1}-${Math.min(
-                actualSpreadStart + 2,
-                pages.length,
-              )}`}
+            ? 'Couvertures (1-2)'
+            : leftPage?.isAchevePage
+              ? 'Achev\u00e9 d\u2019imprimer'
+              : leftPage?.isSpreadImage
+                ? `Panoramique ${actualSpreadStart + 2}-${actualSpreadStart + 3}`
+                : `Pages ${actualSpreadStart + 2}-${actualSpreadStart + 3}`}
         </Text>
-        {!isCoverView && (
-          <TouchableOpacity
-            style={[
-              styles.viewToggleBtn,
-              isStackedView && styles.viewToggleBtnActive,
-            ]}
-            onPress={() => setIsStackedView(!isStackedView)}
-          >
-            <Ionicons
-              name={
-                isStackedView
-                  ? 'tablet-landscape-outline'
-                  : 'tablet-portrait-outline'
-              }
-              size={18}
-              color={isStackedView ? Colors.accent : Colors.textSecondary}
-            />
+        {!isCoverView && !leftPage?.isAchevePage && (
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+            {/* Toggle panoramique (spread image) */}
+            <TouchableOpacity
+              style={[
+                styles.viewToggleBtn,
+                leftPage?.isSpreadImage && styles.viewToggleBtnActive,
+              ]}
+              onPress={() => toggleSpreadImage(actualSpreadStart)}
+            >
+              <Ionicons
+                name="expand-outline"
+                size={18}
+                color={leftPage?.isSpreadImage ? Colors.accent : Colors.textSecondary}
+              />
+            </TouchableOpacity>
+            {/* Toggle vue empilée */}
+            {!leftPage?.isSpreadImage && (
+              <TouchableOpacity
+                style={[
+                  styles.viewToggleBtn,
+                  isStackedView && styles.viewToggleBtnActive,
+                ]}
+                onPress={() => setIsStackedView(!isStackedView)}
+              >
+                <Ionicons
+                  name={
+                    isStackedView
+                      ? 'tablet-landscape-outline'
+                      : 'tablet-portrait-outline'
+                  }
+                  size={18}
+                  color={isStackedView ? Colors.accent : Colors.textSecondary}
+                />
+              </TouchableOpacity>
+            )}
+          </View>
+        )}
+      </View>
+
+      {/* ─── Zoom bar ─── */}
+      <View style={styles.zoomRow}>
+        <TouchableOpacity
+          style={[styles.zoomBtn, zoomLevel <= 0.5 && styles.zoomBtnDisabled]}
+          onPress={() => setZoomLevel(Math.max(0.5, +(zoomLevel - 0.1).toFixed(1)))}
+          disabled={zoomLevel <= 0.5}
+        >
+          <Ionicons name="remove" size={16} color={zoomLevel <= 0.5 ? Colors.borderLight : Colors.textSecondary} />
+        </TouchableOpacity>
+
+        {/* Barre de zoom interactive (glissable) */}
+        <View
+          ref={zoomTrackRef}
+          style={styles.zoomTrack}
+          onLayout={(e: LayoutChangeEvent) => {
+            zoomTrackWidth.current = e.nativeEvent.layout.width;
+            zoomTrackRef.current?.measureInWindow((x) => {
+              if (x != null) zoomTrackPageX.current = x;
+            });
+          }}
+          {...zoomPanResponder.panHandlers}
+        >
+          <View style={styles.zoomTrackBg} />
+          <View style={[styles.zoomTrackFill, { width: `${((zoomLevel - 0.5) / 2) * 100}%` }]} />
+          <View style={[
+            styles.zoomThumb,
+            { left: `${((zoomLevel - 0.5) / 2) * 100}%` },
+          ]} />
+        </View>
+
+        <TouchableOpacity
+          style={[styles.zoomBtn, zoomLevel >= 2.5 && styles.zoomBtnDisabled]}
+          onPress={() => setZoomLevel(Math.min(2.5, +(zoomLevel + 0.1).toFixed(1)))}
+          disabled={zoomLevel >= 2.5}
+        >
+          <Ionicons name="add" size={16} color={zoomLevel >= 2.5 ? Colors.borderLight : Colors.textSecondary} />
+        </TouchableOpacity>
+
+        <Text style={styles.zoomLabel}>{Math.round(zoomLevel * 100)}%</Text>
+
+        {zoomLevel !== 1 && (
+          <TouchableOpacity onPress={() => setZoomLevel(1)} style={styles.zoomResetBtn}>
+            <Text style={styles.zoomResetText}>1:1</Text>
           </TouchableOpacity>
         )}
       </View>
 
       {/* ─── Canvas area ─── */}
-      <View style={styles.canvasArea}>
-        {/* Left arrow */}
-        <TouchableOpacity
-          style={[
-            styles.navArrow,
-            isStackedView && { position: 'absolute' as const, left: 4, zIndex: 10 },
-          ]}
-          onPress={() => navigateSpread('prev')}
-          disabled={!canGoBack}
+      <View style={styles.canvasWrapper}>
+        {/* Left arrow — hidden when a bottom sheet is open */}
+        {!activeSheet && (
+          <TouchableOpacity
+            style={[styles.navArrow, styles.navArrowLeft]}
+            onPress={() => navigateSpread('prev')}
+            disabled={!canGoBack}
+          >
+            <Ionicons
+              name="chevron-back"
+              size={24}
+              color={canGoBack ? Colors.textSecondary : Colors.borderLight}
+            />
+          </TouchableOpacity>
+        )}
+
+        {/* Right arrow — hidden when a bottom sheet is open */}
+        {!activeSheet && (
+          <TouchableOpacity
+            style={[styles.navArrow, styles.navArrowRight]}
+            onPress={() => navigateSpread('next')}
+            disabled={!canGoForward}
+          >
+            <Ionicons
+              name="chevron-forward"
+              size={24}
+              color={canGoForward ? Colors.textSecondary : Colors.borderLight}
+            />
+          </TouchableOpacity>
+        )}
+
+      <ScrollView
+        style={styles.canvasAreaScroll}
+        contentContainerStyle={styles.canvasAreaScrollContent}
+        horizontal
+        showsHorizontalScrollIndicator={zoomLevel > 1.2}
+        showsVerticalScrollIndicator={false}
+        bounces={false}
+        nestedScrollEnabled
+        scrollEnabled={!selectedElementId}
+      >
+        <ScrollView
+          contentContainerStyle={styles.canvasAreaInner}
+          showsVerticalScrollIndicator={zoomLevel > 1.2}
+          showsHorizontalScrollIndicator={false}
+          bounces={false}
+          nestedScrollEnabled
+          scrollEnabled={!selectedElementId}
         >
-          <Ionicons
-            name="chevron-back"
-            size={24}
-            color={canGoBack ? Colors.textSecondary : Colors.borderLight}
-          />
-        </TouchableOpacity>
+      <Pressable style={styles.canvasArea} onPress={handleBackgroundPress}>
 
         {/* Pages */}
         {isCoverView ? (
-          <View style={styles.coverSpread}>
+          <View style={styles.spread}>
+            {/* Front cover (page 0) */}
             {leftPage && (
               <PageView
                 page={leftPage}
-                pageIndex={actualSpreadStart}
-                onSlotPress={(si) => handleSlotPress(actualSpreadStart, si)}
-                onElementSelect={(el) => handleElementSelect(actualSpreadStart, el)}
-                onElementDelete={(id) => removeElement(actualSpreadStart, id)}
+                pageIndex={0}
+                onSlotPress={(si) => handleSlotPress(0, si)}
+                onElementSelect={(el) => handleElementSelect(0, el)}
+                onElementDelete={(id) => removeElement(0, id)}
                 onCanvasPress={handleCanvasPress}
                 selectedElementId={selectedElementId}
-                isActive
-                isCover
-                pageWidth={PAGE_WIDTH}
-                pageHeight={PAGE_HEIGHT}
+                isActive={showPageHighlight && selectedPageIndex === 0}
+                isCover={false}
+                pageWidth={zoomedPageWidth}
+                pageHeight={zoomedPageHeight}
                 isEditingText={isEditingText}
                 editingSlotIndex={
-                  editingPageIndex === actualSpreadStart ? editingSlotIndex : null
+                  editingPageIndex === 0 ? editingSlotIndex : null
+                }
+              />
+            )}
+            {/* Spine / Tranche between covers */}
+            {leftPage && rightPage && hasSpine && (
+              <View
+                style={[
+                  styles.coverSpineStrip,
+                  { width: zoomedSpineWidth, height: zoomedPageHeight },
+                ]}
+                pointerEvents="none"
+              >
+                {/* Bord gauche sombre */}
+                <View style={styles.coverSpineEdge} />
+                {/* Fond blanc/crème */}
+                <View style={styles.coverSpineFill} />
+                {/* Bord droit sombre */}
+                <View style={styles.coverSpineEdge} />
+              </View>
+            )}
+            {/* Simple fold line for lay_flat */}
+            {leftPage && rightPage && !hasSpine && (
+              <View style={[styles.spineOverlay, { height: zoomedPageHeight }]} pointerEvents="none">
+                <LinearGradient
+                  colors={['transparent', 'rgba(0,0,0,0.08)', 'rgba(0,0,0,0.18)', 'rgba(0,0,0,0.08)', 'transparent']}
+                  start={{ x: 0, y: 0.5 }}
+                  end={{ x: 1, y: 0.5 }}
+                  style={StyleSheet.absoluteFill}
+                />
+                <View style={styles.spineLine} />
+              </View>
+            )}
+            {/* Back cover (last page) */}
+            {rightPage && (
+              <PageView
+                page={rightPage}
+                pageIndex={backCoverIndex}
+                onSlotPress={(si) => handleSlotPress(backCoverIndex, si)}
+                onElementSelect={(el) => handleElementSelect(backCoverIndex, el)}
+                onElementDelete={(id) => removeElement(backCoverIndex, id)}
+                onCanvasPress={handleCanvasPress}
+                selectedElementId={selectedElementId}
+                isActive={showPageHighlight && selectedPageIndex === backCoverIndex}
+                isCover={false}
+                pageWidth={zoomedPageWidth}
+                pageHeight={zoomedPageHeight}
+                isEditingText={isEditingText}
+                editingSlotIndex={
+                  editingPageIndex === backCoverIndex ? editingSlotIndex : null
                 }
               />
             )}
           </View>
-        ) : isStackedView ? (
+        ) : leftPage?.isAchevePage ? (
+          /* ── Achev\u00e9 d'imprimer spread (locked) ── */
+          <View style={styles.spread}>
+            {/* Left page: achev\u00e9 text */}
+            <View style={[styles.page, { width: zoomedPageWidth - 24, height: zoomedPageHeight, backgroundColor: '#FFFFFF' }]}>
+              <View style={styles.acheveContent}>
+                <Text style={styles.acheveLogo}>Memoriz.com</Text>
+                <View style={{ height: 6 }} />
+                <Text style={styles.acheveText}>IMPRIMÉ EN FRANCE</Text>
+                <Text style={styles.acheveText}>{`Achevé d\u2019imprimer en \u00ab\u00a0${getAcheveDate()}\u00a0\u00bb`}</Text>
+                <Text style={styles.acheveText}>Chez Messages  SAS</Text>
+                <Text style={styles.acheveText}>111, rue Nicolas Vauquelin – 31100 Toulouse</Text>
+                <Text style={styles.acheveText}>05 31 61 60 42</Text>
+                <Text style={styles.acheveText}>www.memoriz.com</Text>
+              </View>
+              {/* Lock badge */}
+              <View style={styles.acheveLockBadge}>
+                <Ionicons name="lock-closed" size={10} color={Colors.textTertiary} />
+              </View>
+            </View>
+            {/* Spine */}
+            <View style={[styles.spineOverlay, { height: zoomedPageHeight }]} pointerEvents="none">
+              <LinearGradient
+                colors={['transparent', 'rgba(0,0,0,0.08)', 'rgba(0,0,0,0.18)', 'rgba(0,0,0,0.08)', 'transparent']}
+                start={{ x: 0, y: 0.5 }}
+                end={{ x: 1, y: 0.5 }}
+                style={StyleSheet.absoluteFill}
+              />
+              <View style={styles.spineLine} />
+            </View>
+            {/* Right page: blank */}
+            <View style={[styles.page, { width: zoomedPageWidth - 24, height: zoomedPageHeight, backgroundColor: '#FFFFFF' }]}>
+              <View style={styles.acheveLockBadge}>
+                <Ionicons name="lock-closed" size={10} color={Colors.textTertiary} />
+              </View>
+            </View>
+          </View>
+        ) : isStackedView && !leftPage?.isSpreadImage ? (
           <ScrollView
             contentContainerStyle={styles.stackedSpread}
             showsVerticalScrollIndicator={false}
@@ -622,10 +930,10 @@ export default function EditorScreen() {
                 onElementDelete={(id) => removeElement(actualSpreadStart, id)}
                 onCanvasPress={handleCanvasPress}
                 selectedElementId={selectedElementId}
-                isActive={selectedPageIndex === actualSpreadStart}
+                isActive={showPageHighlight && selectedPageIndex === actualSpreadStart}
                 isCover={false}
-                pageWidth={stackedPageWidth}
-                pageHeight={stackedPageHeight}
+                pageWidth={zoomedStackedW}
+                pageHeight={zoomedStackedH}
                 isEditingText={isEditingText}
                 editingSlotIndex={
                   editingPageIndex === actualSpreadStart ? editingSlotIndex : null
@@ -646,10 +954,10 @@ export default function EditorScreen() {
                   onElementDelete={(id) => removeElement(actualSpreadStart + 1, id)}
                   onCanvasPress={handleCanvasPress}
                   selectedElementId={selectedElementId}
-                  isActive={selectedPageIndex === actualSpreadStart + 1}
+                  isActive={showPageHighlight && selectedPageIndex === actualSpreadStart + 1}
                   isCover={false}
-                  pageWidth={stackedPageWidth}
-                  pageHeight={stackedPageHeight}
+                  pageWidth={zoomedStackedW}
+                  pageHeight={zoomedStackedH}
                   isEditingText={isEditingText}
                   editingSlotIndex={
                     editingPageIndex === actualSpreadStart + 1
@@ -660,6 +968,78 @@ export default function EditorScreen() {
               </View>
             )}
           </ScrollView>
+        ) : leftPage?.isSpreadImage ? (
+          /* ── Spread Image: single image spanning both pages ── */
+          <View style={styles.spread}>
+            <Pressable
+              style={[
+                styles.spreadImageContainer,
+                {
+                  width: (zoomedPageWidth - 24) * 2,
+                  height: zoomedPageHeight,
+                  backgroundColor: leftPage.backgroundColor || '#FFFFFF',
+                },
+                showPageHighlight && styles.pageActive,
+              ]}
+              onPress={() => {
+                const slotData = leftPage.slots[0];
+                setShowPageHighlight(true);
+                setPhotoTargetSlot({ pageIdx: actualSpreadStart, slotIdx: 0 });
+                setSelectedSlot(0);
+                setSelectedPage(actualSpreadStart);
+                setPhotoInitialTab(slotData?.photoUri ? 'recadrage' : 'pellicule');
+                setActiveSheet('photos');
+              }}
+            >
+              {(() => {
+                const slotData = leftPage.slots[0];
+                const containerW = (zoomedPageWidth - 24) * 2;
+                const containerH = zoomedPageHeight;
+                const imgScale = slotData?.imageScale ?? 1;
+                const imgOffX = slotData?.imageOffsetX ?? 0;
+                const imgOffY = slotData?.imageOffsetY ?? 0;
+                const translatePxX = (imgOffX / 100) * containerW;
+                const translatePxY = (imgOffY / 100) * containerH;
+                return slotData?.photoUri ? (
+                  <FilteredImage
+                    uri={slotData.photoUri}
+                    brightness={slotData?.brightness ?? 0}
+                    contrast={slotData?.contrast ?? 0}
+                    saturation={slotData?.saturation ?? 0}
+                    warmth={slotData?.warmth ?? 0}
+                    sharpness={slotData?.sharpness ?? 0}
+                    vignette={slotData?.vignette ?? 0}
+                    containerStyle={{ flex: 1, width: '100%', height: '100%', overflow: 'hidden' }}
+                    imageStyle={[
+                      styles.slotImage,
+                      {
+                        transform: [
+                          { scale: imgScale },
+                          { translateX: translatePxX },
+                          { translateY: translatePxY },
+                        ],
+                      },
+                    ]}
+                  />
+                ) : (
+                  <View style={styles.spreadImagePlaceholder}>
+                    <Ionicons name="images-outline" size={32} color={Colors.textTertiary} />
+                    <Text style={styles.spreadImagePlaceholderText}>Image panoramique</Text>
+                  </View>
+                );
+              })()}
+            </Pressable>
+            {/* Pliure overlay on top of spread image */}
+            <View style={[styles.spineOverlay, { height: zoomedPageHeight, left: '50%', marginLeft: -4 }]} pointerEvents="none">
+              <LinearGradient
+                colors={['transparent', 'rgba(0,0,0,0.06)', 'rgba(0,0,0,0.12)', 'rgba(0,0,0,0.06)', 'transparent']}
+                start={{ x: 0, y: 0.5 }}
+                end={{ x: 1, y: 0.5 }}
+                style={StyleSheet.absoluteFill}
+              />
+              <View style={styles.spineLine} />
+            </View>
+          </View>
         ) : (
           <View style={styles.spread}>
             {leftPage && (
@@ -671,15 +1051,27 @@ export default function EditorScreen() {
                 onElementDelete={(id) => removeElement(actualSpreadStart, id)}
                 onCanvasPress={handleCanvasPress}
                 selectedElementId={selectedElementId}
-                isActive={selectedPageIndex === actualSpreadStart}
+                isActive={showPageHighlight && selectedPageIndex === actualSpreadStart}
                 isCover={false}
-                pageWidth={PAGE_WIDTH}
-                pageHeight={PAGE_HEIGHT}
+                pageWidth={zoomedPageWidth}
+                pageHeight={zoomedPageHeight}
                 isEditingText={isEditingText}
                 editingSlotIndex={
                   editingPageIndex === actualSpreadStart ? editingSlotIndex : null
                 }
               />
+            )}
+            {/* ── Pliure / reliure au centre ── */}
+            {leftPage && rightPage && (
+              <View style={[styles.spineOverlay, { height: zoomedPageHeight }]} pointerEvents="none">
+                <LinearGradient
+                  colors={['transparent', 'rgba(0,0,0,0.08)', 'rgba(0,0,0,0.18)', 'rgba(0,0,0,0.08)', 'transparent']}
+                  start={{ x: 0, y: 0.5 }}
+                  end={{ x: 1, y: 0.5 }}
+                  style={StyleSheet.absoluteFill}
+                />
+                <View style={styles.spineLine} />
+              </View>
             )}
             {rightPage && (
               <PageView
@@ -694,10 +1086,10 @@ export default function EditorScreen() {
                 onElementDelete={(id) => removeElement(actualSpreadStart + 1, id)}
                 onCanvasPress={handleCanvasPress}
                 selectedElementId={selectedElementId}
-                isActive={selectedPageIndex === actualSpreadStart + 1}
+                isActive={showPageHighlight && selectedPageIndex === actualSpreadStart + 1}
                 isCover={false}
-                pageWidth={PAGE_WIDTH}
-                pageHeight={PAGE_HEIGHT}
+                pageWidth={zoomedPageWidth}
+                pageHeight={zoomedPageHeight}
                 isEditingText={isEditingText}
                 editingSlotIndex={
                   editingPageIndex === actualSpreadStart + 1
@@ -709,21 +1101,9 @@ export default function EditorScreen() {
           </View>
         )}
 
-        {/* Right arrow */}
-        <TouchableOpacity
-          style={[
-            styles.navArrow,
-            isStackedView && { position: 'absolute' as const, right: 4, zIndex: 10 },
-          ]}
-          onPress={() => navigateSpread('next')}
-          disabled={!canGoForward}
-        >
-          <Ionicons
-            name="chevron-forward"
-            size={24}
-            color={canGoForward ? Colors.textSecondary : Colors.borderLight}
-          />
-        </TouchableOpacity>
+      </Pressable>
+        </ScrollView>
+      </ScrollView>
       </View>
 
       {/* ─── Text formatting toolbar ─── */}
@@ -750,28 +1130,74 @@ export default function EditorScreen() {
       )}
 
       {/* ─── Thumbnails ─── */}
-      {!(isEditingText && keyboardVisible) && (
+      {!(isEditingText && keyboardVisible) && !activeSheet && (
         <View style={styles.thumbnailContainer}>
           <FlatList
-            data={pages}
+            style={{ flex: 1 }}
+            data={thumbnailOrder}
             horizontal
             showsHorizontalScrollIndicator={false}
             contentContainerStyle={styles.thumbnailList}
-            keyExtractor={(_, i) => `thumb-${i}`}
-            renderItem={({ item, index }) => (
-              <TouchableOpacity
-                style={[
-                  styles.thumbnail,
-                  index === selectedPageIndex && styles.thumbnailActive,
-                ]}
-                onPress={() => setSelectedPage(index)}
-              >
-                <View style={styles.thumbnailInner}>
-                  <Text style={styles.thumbnailNum}>{index + 1}</Text>
-                </View>
-              </TouchableOpacity>
-            )}
+            keyExtractor={(actualIdx, i) => `thumb-${actualIdx}-${i}`}
+            renderItem={({ item: actualIdx, index: visualIdx }) => {
+              // Both pages of the current spread should highlight
+              const isActive = isCoverView
+                ? (actualIdx === 0 || actualIdx === backCoverIndex)
+                : (actualIdx === actualSpreadStart || actualIdx === actualSpreadStart + 1);
+              const isAcheve = pages[actualIdx]?.isAchevePage;
+              return (
+                <TouchableOpacity
+                  style={[
+                    styles.thumbnail,
+                    isActive && styles.thumbnailActive,
+                    isAcheve && styles.thumbnailLocked,
+                  ]}
+                  onPress={() => { setSelectedPage(actualIdx); setShowPageHighlight(true); }}
+                >
+                  <View style={styles.thumbnailInner}>
+                    {isAcheve ? (
+                      <Ionicons name="lock-closed" size={10} color={Colors.textTertiary} />
+                    ) : (
+                      <Text style={styles.thumbnailNum}>{visualIdx + 1}</Text>
+                    )}
+                  </View>
+                </TouchableOpacity>
+              );
+            }}
           />
+          {/* ── Boutons +/- en fin de liste ── */}
+          {pages.length > 6 && (
+            <TouchableOpacity
+              style={styles.thumbnailActionBtn}
+              onPress={() => {
+                // Last 2 editable interior pages (before achevé + back cover)
+                const acheveIdx = pages.findIndex((p) => p.isAchevePage);
+                const lastInteriorStart = acheveIdx > 2 ? acheveIdx - 2 : pages.length - 5;
+                Alert.alert(
+                  'Supprimer 2 pages ?',
+                  `Les 2 dernières pages intérieures seront supprimées.\nCette action peut être annulée.`,
+                  [
+                    { text: 'Annuler', style: 'cancel' },
+                    {
+                      text: 'Supprimer',
+                      style: 'destructive',
+                      onPress: () => removePagePair(lastInteriorStart),
+                    },
+                  ],
+                );
+              }}
+            >
+              <Ionicons name="remove" size={14} color={Colors.textTertiary} />
+            </TouchableOpacity>
+          )}
+          <TouchableOpacity
+            style={[styles.thumbnailActionBtn, styles.thumbnailActionBtnAdd]}
+            onPress={() => {
+              addPage();
+            }}
+          >
+            <Ionicons name="add" size={14} color={Colors.accent} />
+          </TouchableOpacity>
         </View>
       )}
 
@@ -785,7 +1211,7 @@ export default function EditorScreen() {
           >
             <Ionicons
               name="arrow-undo"
-              size={20}
+              size={16}
               color={canUndo ? Colors.textPrimary : Colors.borderLight}
             />
           </TouchableOpacity>
@@ -796,7 +1222,7 @@ export default function EditorScreen() {
           >
             <Ionicons
               name="arrow-redo"
-              size={20}
+              size={16}
               color={canRedo ? Colors.textPrimary : Colors.borderLight}
             />
           </TouchableOpacity>
@@ -874,19 +1300,22 @@ export default function EditorScreen() {
 
       {/* ─── Bottom sheets ─── */}
       {activeSheet === 'photos' && (
-        <PhotoPickerSheet
-          onSelect={handlePhotoSelected}
+        <PhotoToolsSheet
+          onSelectPhoto={handlePhotoSelected}
           onClose={() => {
             setActiveSheet(null);
             setPhotoTargetSlot(null);
           }}
+          initialTab={photoInitialTab}
+          pageIndex={photoTargetSlot?.pageIdx ?? selectedPageIndex}
+          slotIndex={photoTargetSlot?.slotIdx ?? null}
         />
       )}
       {activeSheet === 'layout' && (
-        <LayoutSelectorSheet
-          onSelect={handleLayoutSelected}
+        <LayoutToolsSheet
           onClose={() => setActiveSheet(null)}
-          currentLayoutId={pages[selectedPageIndex]?.layoutId}
+          onSelectLayout={handleLayoutSelected}
+          pageIndex={selectedPageIndex}
         />
       )}
       {activeSheet === 'text' && !isEditingText && (
@@ -949,20 +1378,77 @@ function PageView({
   const layout =
     DEFAULT_LAYOUTS.find((l) => l.id === page.layoutId) || DEFAULT_LAYOUTS[0];
 
-  const coverW = SPREAD_WIDTH * 0.7;
-  const coverH = coverW * (pageHeight / pageWidth);
-  const w = isCover ? coverW : pageWidth - 24;
-  const h = isCover ? coverH : pageHeight;
+  // Les dimensions sont déjà calculées par le parent (avec zoom)
+  const w = isCover ? pageWidth * 0.7 : pageWidth - 24;
+  const h = isCover ? w * (pageHeight / pageWidth) : pageHeight;
 
   const elements = [...(page.elements || [])].sort(
     (a: PageElement, b: PageElement) => a.zIndex - b.zIndex,
   );
 
+  // Page-level style overrides
+  const pageBg = page.backgroundColor || '#FFFFFF';
+  const slotRadius = page.slotBorderRadius ?? 0;
+  const slotSpacing = page.slotSpacing ?? 0;
+  const slotBorderW = page.slotBorderWidth ?? 0;
+
+  // ── Compute tiled (flush) slot positions when spacing is explicitly set ──
+  const tiledSlots = React.useMemo(() => {
+    if (page.slotSpacing === undefined) return null; // use raw layout positions
+    const slots = layout.slots;
+    if (!slots || slots.length === 0) return null;
+    if (slots.length === 1) return [{ x: 0, y: 0, width: 100, height: 100 }];
+
+    // Check for overlapping slots → skip tiling (e.g. focus+vignette)
+    for (let i = 0; i < slots.length; i++) {
+      for (let j = i + 1; j < slots.length; j++) {
+        const a = slots[i], b = slots[j];
+        if (a.x < b.x + b.width && a.x + a.width > b.x &&
+            a.y < b.y + b.height && a.y + a.height > b.y) {
+          return null; // overlapping layout, don't tile
+        }
+      }
+    }
+
+    // Group into rows by similar y-center (within 10% tolerance)
+    const indexed = slots.map((s: any, i: number) => ({ ...s, _i: i }));
+    indexed.sort((a: any, b: any) => a.y - b.y || a.x - b.x);
+    const rows: any[][] = [];
+    let curRow: any[] = [];
+    for (const s of indexed) {
+      if (curRow.length === 0) { curRow.push(s); continue; }
+      const rowCenterY = curRow[0].y + curRow[0].height / 2;
+      const sCenterY = s.y + s.height / 2;
+      if (Math.abs(sCenterY - rowCenterY) < 10) { curRow.push(s); }
+      else { rows.push(curRow); curRow = [s]; }
+    }
+    if (curRow.length > 0) rows.push(curRow);
+
+    // Compute proportional heights per row
+    const rowH = rows.map(r => Math.max(...r.map((s: any) => s.height)));
+    const totalH = rowH.reduce((a, b) => a + b, 0);
+    const result: { x: number; y: number; width: number; height: number }[] = new Array(slots.length);
+    let yPos = 0;
+    rows.forEach((row, ri) => {
+      const h = (rowH[ri] / totalH) * 100;
+      row.sort((a: any, b: any) => a.x - b.x);
+      const totalW = row.reduce((sum: number, s: any) => sum + s.width, 0);
+      let xPos = 0;
+      for (const s of row) {
+        const w = (s.width / totalW) * 100;
+        result[s._i] = { x: xPos, y: yPos, width: w, height: h };
+        xPos += w;
+      }
+      yPos += h;
+    });
+    return result;
+  }, [layout.slots, page.slotSpacing]);
+
   return (
     <Pressable
       style={[
         isCover ? styles.coverPage : styles.page,
-        { width: w, height: h },
+        { width: w, height: h, backgroundColor: pageBg },
         isActive && styles.pageActive,
       ]}
       onPress={onCanvasPress}
@@ -972,6 +1458,44 @@ function PageView({
         const slotData = page.slots[slotIdx];
         const isThisSlotEditing = isEditingText && editingSlotIndex === slotIdx;
         const isTextSlot = slot.type === 'text';
+
+        // Use tiled position if available, else raw layout position
+        const baseX = tiledSlots ? tiledSlots[slotIdx].x : slot.x;
+        const baseY = tiledSlots ? tiledSlots[slotIdx].y : slot.y;
+        const baseW = tiledSlots ? tiledSlots[slotIdx].width : slot.width;
+        const baseH = tiledSlots ? tiledSlots[slotIdx].height : slot.height;
+
+        // Apply page margin (bordure): remap positions into padded area
+        const margin = slotBorderW; // percentage
+        const marginedX = margin + baseX * (100 - 2 * margin) / 100;
+        const marginedY = margin + baseY * (100 - 2 * margin) / 100;
+        const marginedW = baseW * (100 - 2 * margin) / 100;
+        const marginedH = baseH * (100 - 2 * margin) / 100;
+
+        // Apply spacing (espace) as inset between images
+        const spacedX = marginedX + slotSpacing / 2;
+        const spacedY = marginedY + slotSpacing / 2;
+        const spacedW = marginedW - slotSpacing;
+        const spacedH = marginedH - slotSpacing;
+
+        // Image fit from slot data
+        const imgScale = slotData?.imageScale ?? 1;
+        const imgOffX = slotData?.imageOffsetX ?? 0;
+        const imgOffY = slotData?.imageOffsetY ?? 0;
+
+        // Convert percentage-based offsets to pixel translations
+        const slotPixelW = (spacedW / 100) * w;
+        const slotPixelH = (spacedH / 100) * h;
+        const translatePxX = (imgOffX / 100) * slotPixelW;
+        const translatePxY = (imgOffY / 100) * slotPixelH;
+
+        // Image adjustments
+        const slotBrightness = slotData?.brightness ?? 0;
+        const slotContrast = slotData?.contrast ?? 0;
+        const slotSaturation = slotData?.saturation ?? 0;
+        const slotWarmth = slotData?.warmth ?? 0;
+        const slotVignette = slotData?.vignette ?? 0;
+
         return (
           <Pressable
             key={`slot-${slotIdx}`}
@@ -979,20 +1503,36 @@ function PageView({
               isTextSlot ? styles.slotText : styles.slot,
               {
                 position: 'absolute',
-                left: `${slot.x}%`,
-                top: `${slot.y}%`,
-                width: `${slot.width}%`,
-                height: `${slot.height}%`,
-                borderRadius: slot.borderRadius || 0,
+                left: `${spacedX}%`,
+                top: `${spacedY}%`,
+                width: `${spacedW}%`,
+                height: `${spacedH}%`,
+                borderRadius: page.slotBorderRadius !== undefined ? slotRadius : (slot.borderRadius || 0),
               } as any,
               isThisSlotEditing && styles.slotEditing,
             ]}
             onPress={() => onSlotPress(slotIdx)}
           >
             {slotData?.photoUri ? (
-              <Image
-                source={{ uri: slotData.photoUri }}
-                style={styles.slotImage}
+              <FilteredImage
+                uri={slotData.photoUri}
+                brightness={slotBrightness}
+                contrast={slotContrast}
+                saturation={slotSaturation}
+                warmth={slotWarmth}
+                sharpness={slotData?.sharpness ?? 0}
+                vignette={slotVignette}
+                containerStyle={{ flex: 1, width: '100%', height: '100%', overflow: 'hidden' }}
+                imageStyle={[
+                  styles.slotImage,
+                  {
+                    transform: [
+                      { scale: imgScale },
+                      { translateX: translatePxX },
+                      { translateY: translatePxY },
+                    ],
+                  },
+                ]}
               />
             ) : slotData?.text && isTextSlot ? (
               <Text
@@ -1024,9 +1564,21 @@ function PageView({
                 {slotData.text}
               </Text>
             ) : slot.type === 'photo' ? (
-              <View style={styles.slotEmpty}>
-                <Ionicons name="add" size={20} color={Colors.textTertiary} />
-              </View>
+              layout.slots.length > 1 ? (
+                <View style={{ flex: 1, width: '100%', height: '100%' }}>
+                  <Image
+                    source={GRID_PLACEHOLDER}
+                    style={styles.slotImage as any}
+                  />
+                  <View style={styles.slotPlaceholderOverlay}>
+                    <Ionicons name="add" size={24} color="rgba(255,255,255,0.85)" />
+                  </View>
+                </View>
+              ) : (
+                <View style={styles.slotEmpty}>
+                  <Ionicons name="add" size={20} color={Colors.textTertiary} />
+                </View>
+              )
             ) : (
               <View style={[styles.slotEmpty, styles.slotEmptyText]}>
                 <Ionicons name="text" size={16} color={Colors.textTertiary} />
@@ -1174,6 +1726,21 @@ const styles = StyleSheet.create({
     color: Colors.textSecondary,
     fontWeight: '600',
   },
+  coverSpineStrip: {
+    flexDirection: 'row',
+    zIndex: 10,
+    overflow: 'hidden',
+  },
+  coverSpineEdge: {
+    width: 1.5,
+    height: '100%',
+    backgroundColor: 'rgba(0,0,0,0.35)',
+  },
+  coverSpineFill: {
+    flex: 1,
+    height: '100%',
+    backgroundColor: '#F5F0EB',
+  },
   viewToggleBtn: {
     width: 32,
     height: 32,
@@ -1187,6 +1754,99 @@ const styles = StyleSheet.create({
   viewToggleBtnActive: {
     backgroundColor: '#FFF0F3',
     borderColor: Colors.accent,
+  },
+  zoomRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: Spacing.lg,
+    paddingBottom: 4,
+    gap: 6,
+  },
+  zoomBtn: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    backgroundColor: Colors.backgroundSecondary,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: Colors.borderLight,
+  },
+  zoomBtnDisabled: {
+    opacity: 0.4,
+  },
+  zoomTrack: {
+    width: 120,
+    height: 20,
+    borderRadius: 2,
+    backgroundColor: 'transparent',
+    justifyContent: 'center',
+    position: 'relative',
+  },
+  zoomTrackBg: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    top: 8,
+    height: 4,
+    borderRadius: 2,
+    backgroundColor: Colors.borderLight,
+  },
+  zoomTrackFill: {
+    position: 'absolute',
+    left: 0,
+    top: 8,
+    height: 4,
+    backgroundColor: Colors.accent,
+    borderRadius: 2,
+  },
+  zoomThumb: {
+    position: 'absolute',
+    top: 4,
+    width: 12,
+    height: 12,
+    borderRadius: 6,
+    backgroundColor: Colors.accent,
+    marginLeft: -6,
+    borderWidth: 1.5,
+    borderColor: '#fff',
+    elevation: 2,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.2,
+    shadowRadius: 1,
+  },
+  zoomLabel: {
+    fontSize: 11,
+    color: Colors.textTertiary,
+    fontWeight: '600',
+    width: 36,
+    textAlign: 'center',
+  },
+  zoomResetBtn: {
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 10,
+    backgroundColor: Colors.backgroundSecondary,
+    borderWidth: 1,
+    borderColor: Colors.borderLight,
+  },
+  zoomResetText: {
+    fontSize: 10,
+    color: Colors.accent,
+    fontWeight: '700',
+  },
+  canvasAreaScroll: {
+    flex: 1,
+  },
+  canvasAreaScrollContent: {
+    flexGrow: 1,
+  },
+  canvasAreaInner: {
+    flexGrow: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
   },
   canvasArea: {
     flex: 1,
@@ -1208,14 +1868,48 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.1,
     shadowRadius: 2,
   },
+  navArrowLeft: {
+    position: 'absolute',
+    left: 6,
+    top: '50%',
+    marginTop: -18,
+    zIndex: 5,
+  },
+  navArrowRight: {
+    position: 'absolute',
+    right: 6,
+    top: '50%',
+    marginTop: -18,
+    zIndex: 5,
+  },
+  canvasWrapper: {
+    flex: 1,
+    position: 'relative',
+  },
   spread: {
     flexDirection: 'row',
+    alignItems: 'center',
     marginHorizontal: Spacing.sm,
     elevation: 4,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.15,
     shadowRadius: 8,
+  },
+  spineOverlay: {
+    width: 16,
+    marginHorizontal: -8,
+    zIndex: 10,
+    position: 'relative',
+  },
+  spineLine: {
+    position: 'absolute',
+    left: '50%',
+    marginLeft: -0.5,
+    top: 0,
+    bottom: 0,
+    width: 1,
+    backgroundColor: 'rgba(0,0,0,0.15)',
   },
   stackedSpread: {
     alignItems: 'center',
@@ -1248,6 +1942,54 @@ const styles = StyleSheet.create({
     borderColor: Colors.accent,
     borderWidth: 2,
   },
+  acheveContent: {
+    flex: 1,
+    justifyContent: 'flex-end',
+    alignItems: 'center',
+    paddingBottom: 8,
+    paddingHorizontal: 8,
+  },
+  acheveLogo: {
+    fontSize: 8,
+    fontWeight: '700',
+    color: '#1B2541',
+    marginBottom: 1,
+  },
+  acheveText: {
+    fontSize: 5,
+    color: '#1B2541',
+    textAlign: 'center',
+    lineHeight: 8,
+  },
+  acheveLockBadge: {
+    position: 'absolute',
+    top: 4,
+    right: 4,
+    width: 18,
+    height: 18,
+    borderRadius: 9,
+    backgroundColor: 'rgba(0,0,0,0.06)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  thumbnailLocked: {
+    opacity: 0.5,
+  },
+  spreadImageContainer: {
+    overflow: 'hidden',
+    borderRadius: 2,
+  },
+  spreadImagePlaceholder: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#F5F5F5',
+  },
+  spreadImagePlaceholderText: {
+    marginTop: 8,
+    fontSize: 12,
+    color: Colors.textTertiary,
+  },
   slot: { overflow: 'hidden' },
   slotText: { /* pas d'overflow hidden pour les slots texte — évite le clipping */ },
   slotEditing: {
@@ -1259,14 +2001,17 @@ const styles = StyleSheet.create({
     height: '100%',
     resizeMode: 'cover',
   },
-  slotEmpty: {
-    flex: 1,
-    backgroundColor: Colors.backgroundSecondary,
+  slotPlaceholderOverlay: {
+    ...StyleSheet.absoluteFillObject,
     alignItems: 'center',
     justifyContent: 'center',
-    borderWidth: 1,
-    borderColor: Colors.borderLight,
-    borderStyle: 'dashed',
+    backgroundColor: 'rgba(0,0,0,0.15)',
+  },
+  slotEmpty: {
+    flex: 1,
+    backgroundColor: '#FFFFFF',
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   slotEmptyText: {
     backgroundColor: '#F5F0FF',
@@ -1309,6 +2054,10 @@ const styles = StyleSheet.create({
   thumbnailContainer: {
     backgroundColor: Colors.white,
     paddingVertical: Spacing.sm,
+    zIndex: 10,
+    elevation: 10,
+    flexDirection: 'row',
+    alignItems: 'center',
   },
   thumbnailList: {
     paddingHorizontal: Spacing.lg,
@@ -1336,19 +2085,36 @@ const styles = StyleSheet.create({
     ...Typography.small,
     color: Colors.textTertiary,
   },
+  thumbnailActionBtn: {
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    backgroundColor: Colors.backgroundSecondary,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: Colors.borderLight,
+    marginLeft: Spacing.xs,
+    alignSelf: 'center',
+  },
+  thumbnailActionBtnAdd: {
+    borderColor: Colors.accent,
+  },
   undoRedoRow: {
     flexDirection: 'row',
     justifyContent: 'flex-end',
     alignItems: 'center',
     paddingHorizontal: Spacing.lg,
-    paddingVertical: 4,
+    paddingVertical: 2,
     backgroundColor: Colors.white,
-    gap: Spacing.sm,
+    gap: 4,
+    zIndex: 10,
+    elevation: 10,
   },
   undoRedoBtn: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
+    width: 28,
+    height: 28,
+    borderRadius: 14,
     backgroundColor: Colors.backgroundSecondary,
     alignItems: 'center',
     justifyContent: 'center',
@@ -1363,6 +2129,8 @@ const styles = StyleSheet.create({
     paddingBottom: Spacing.xl,
     borderTopWidth: 1,
     borderTopColor: Colors.borderLight,
+    zIndex: 10,
+    elevation: 10,
   },
   toolItem: { flex: 1, alignItems: 'center', gap: 4 },
   toolItemActive: {},

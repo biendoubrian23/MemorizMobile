@@ -70,8 +70,8 @@ export default function DraggableElement({
   const commitPosition = useCallback(
     (nx: number, ny: number) => {
       onPositionChange(
-        Math.max(0, Math.min(100 - width, nx)),
-        Math.max(0, Math.min(100 - height, ny)),
+        Math.max(-width * 0.5, Math.min(100 - width * 0.5, nx)),
+        Math.max(-height * 0.5, Math.min(100 - height * 0.5, ny)),
       );
     },
     [width, height, onPositionChange],
@@ -131,7 +131,7 @@ export default function DraggableElement({
   // Pan to drag
   const panGesture = Gesture.Pan()
     .enabled(!locked)
-    .minDistance(8)
+    .minDistance(4)
     .onStart(() => {
       runOnJS(onSelect)();
     })
@@ -142,9 +142,13 @@ export default function DraggableElement({
     .onEnd((e) => {
       const nx = x + (e.translationX / pageWidth) * 100;
       const ny = y + (e.translationY / pageHeight) * 100;
+      // Keep visual offset until store updates trigger re-render (useEffect resets them)
+      runOnJS(commitPosition)(nx, ny);
+    })
+    .onFinalize(() => {
+      // Safety reset if gesture is cancelled
       dragX.value = 0;
       dragY.value = 0;
-      runOnJS(commitPosition)(nx, ny);
     });
 
   const composedGesture = Gesture.Race(tapGesture, panGesture);

@@ -30,6 +30,8 @@ export interface DraftData {
   metadata: DraftMetadata;
   pages: PageData[];
   availablePhotos: string[];
+  selectedPageIndex?: number;
+  zoomLevel?: number;
 }
 
 // ─────────── Helpers ───────────
@@ -48,6 +50,8 @@ export async function saveDraft(
   format: string,
   pages: PageData[],
   availablePhotos: string[] = [],
+  selectedPageIndex: number = 0,
+  zoomLevel: number = 1,
 ): Promise<void> {
   const draft: DraftData = {
     metadata: {
@@ -58,6 +62,8 @@ export async function saveDraft(
     },
     pages,
     availablePhotos,
+    selectedPageIndex,
+    zoomLevel,
   };
 
   // Sauvegarde atomique : données + mise à jour de l'index

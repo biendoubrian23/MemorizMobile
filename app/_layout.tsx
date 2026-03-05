@@ -4,6 +4,7 @@ import { StatusBar } from 'expo-status-bar';
 import { View, ActivityIndicator, StyleSheet } from 'react-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
+import * as SplashScreen from 'expo-splash-screen';
 import { useFonts } from '@expo-google-fonts/playfair-display/useFonts';
 import {
   PlayfairDisplay_400Regular,
@@ -13,6 +14,9 @@ import {
 import { useAuthStore } from '../src/store/authStore';
 import { Colors } from '../src/theme';
 import { cleanExpiredDrafts } from '../src/services/draftStorage';
+
+// Empêcher le splash screen de se masquer automatiquement
+SplashScreen.preventAutoHideAsync();
 
 function AuthGate() {
   const { user, isInitialized } = useAuthStore();
@@ -52,6 +56,7 @@ function AuthGate() {
 
 export default function RootLayout() {
   const initialize = useAuthStore((s) => s.initialize);
+  const isInitialized = useAuthStore((s) => s.isInitialized);
   const [fontsLoaded] = useFonts({
     PlayfairDisplay_400Regular,
     PlayfairDisplay_700Bold,
@@ -61,15 +66,18 @@ export default function RootLayout() {
   useEffect(() => {
     initialize();
     // Nettoyage des brouillons expirés (> 1 an) au lancement
-    cleanExpiredDrafts().catch(() => {});
+    cleanExpiredDrafts().catch(() => { });
   }, []);
 
+  // Masquer le splash screen une fois que tout est prêt
+  useEffect(() => {
+    if (fontsLoaded && isInitialized) {
+      SplashScreen.hideAsync();
+    }
+  }, [fontsLoaded, isInitialized]);
+
   if (!fontsLoaded) {
-    return (
-      <View style={styles.loading}>
-        <ActivityIndicator size="large" color={Colors.primary} />
-      </View>
-    );
+    return null;
   }
 
   return (

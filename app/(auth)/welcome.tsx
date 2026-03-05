@@ -27,34 +27,39 @@ export default function WelcomeScreen() {
 
       {/* Center content */}
       <View style={styles.content}>
-        {/* Headline */}
-        <View style={styles.textSection}>
-          <Text style={styles.headline}>
-            Imprimez vos souvenirs{"\n"}en quelques clics.
-          </Text>
+        {/* Top: Logo */}
+        <View style={styles.topSection}>
           <Logo size="lg" color={Colors.white} />
         </View>
 
-        {/* CTA card */}
-        <View style={styles.ctaCard}>
-          <Button
-            title="Se connecter"
-            onPress={() => router.push('/(auth)/login')}
-            variant="primary"
-            size="lg"
-          />
-          <Button
-            title="Créer un compte"
-            onPress={() => router.push('/(auth)/register')}
-            variant="outline"
-            size="lg"
-          />
-          <TouchableOpacity
-            onPress={() => router.replace('/(app)/(tabs)')}
-            style={styles.guestBtn}
-          >
-            <Text style={styles.guestText}>Continuer en tant qu'invité</Text>
-          </TouchableOpacity>
+        {/* Bottom Group: CTA card + Headline + Guest Link */}
+        <View style={styles.bottomGroup}>
+          <View style={styles.ctaCard}>
+            <Button
+              title="Se connecter"
+              onPress={() => router.push('/(auth)/login')}
+              variant="primary"
+              size="lg"
+            />
+            <Button
+              title="Créer un compte"
+              onPress={() => router.push('/(auth)/register')}
+              variant="outline"
+              size="lg"
+            />
+          </View>
+
+          <View style={styles.textSection}>
+            <Text style={styles.headline}>
+              Imprimez vos souvenirs{"\n"}en quelques clics.
+            </Text>
+            <TouchableOpacity
+              onPress={() => router.replace('/(app)/(tabs)')}
+              style={styles.guestBtn}
+            >
+              <Text style={styles.guestText}>Continuer en tant qu'invité</Text>
+            </TouchableOpacity>
+          </View>
         </View>
       </View>
     </ImageBackground>
@@ -72,22 +77,19 @@ const styles = StyleSheet.create({
   },
   content: {
     flex: 1,
-    justifyContent: 'center',
+    justifyContent: 'space-between',
     alignItems: 'center',
     paddingHorizontal: Spacing.xl,
+    paddingTop: Spacing['4xl'] * 1.5,
+    paddingBottom: Spacing['3xl'], // slightly reduced bottom padding
   },
-  textSection: {
+  topSection: {
     alignItems: 'center',
-    marginBottom: Spacing['4xl'],
   },
-  headline: {
-    fontSize: 30,
-    fontStyle: 'italic',
-    fontWeight: '300',
-    color: Colors.white,
-    textAlign: 'center',
-    lineHeight: 42,
-    marginBottom: Spacing.lg,
+  bottomGroup: {
+    width: '100%',
+    alignItems: 'center',
+    gap: Spacing.xl, // Space between buttons and the text below
   },
   ctaCard: {
     backgroundColor: 'rgba(255,255,255,0.95)',
@@ -98,13 +100,24 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     width: '100%',
   },
+  textSection: {
+    alignItems: 'center',
+    gap: Spacing.sm,
+  },
+  headline: {
+    fontSize: 26, // Slightly smaller
+    fontStyle: 'italic',
+    fontWeight: '300',
+    color: Colors.white,
+    textAlign: 'center',
+    lineHeight: 36,
+  },
   guestBtn: {
-    marginTop: Spacing.sm,
     paddingVertical: Spacing.sm,
   },
   guestText: {
     ...Typography.bodySmall,
-    color: Colors.textSecondary,
+    color: 'rgba(255,255,255,0.7)',
     textDecorationLine: 'underline',
   },
 });

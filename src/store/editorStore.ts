@@ -4,15 +4,19 @@ import { DEFAULT_LAYOUTS } from '../../editor/utils/layouts';
 import { saveDraft, loadDraft } from '../services/draftStorage';
 
 // ─── Debounce helper for auto-save ───
+// Very short delay: just enough to batch rapid slider drags,
+// but saves quickly so no data is lost when leaving the editor.
 let saveTimer: ReturnType<typeof setTimeout> | null = null;
-const SAVE_DELAY = 1500;
+const SAVE_DELAY = 300;
 
-function debouncedSave(state: EditorState) {
+function debouncedSave(_stateIgnored: EditorState) {
   if (saveTimer) clearTimeout(saveTimer);
   saveTimer = setTimeout(async () => {
-    if (!state.projectId) return;
+    // Always read fresh state inside the timeout so we save the latest values
+    const s = useEditorStore.getState();
+    if (!s.projectId) return;
     try {
-      await saveDraft(state.projectId, state.format, state.pages, state.availablePhotos);
+      await saveDraft(s.projectId, s.format, s.pages, s.availablePhotos, s.selectedPageIndex, s.zoomLevel);
       useEditorStore.setState({ isSaved: true });
     } catch (e) {
       console.warn('[draftStorage] auto-save failed', e);
@@ -30,6 +34,7 @@ interface EditorState {
   format: FormatType;
   pages: PageData[];
   selectedPageIndex: number;
+  zoomLevel: number;
   selectedSlotIndex: number | null;
   selectedElementId: string | null;
   availablePhotos: string[];
@@ -45,12 +50,15 @@ interface EditorState {
   // Actions - Navigation
   initEditor: (projectId: string, format: FormatType, existingPages?: PageData[], coverImageUri?: string) => Promise<void>;
   setSelectedPage: (index: number) => void;
+  setZoomLevel: (zoom: number) => void;
   setSelectedSlot: (index: number | null) => void;
   setSelectedElementId: (id: string | null) => void;
 
   // Actions - Layout & Slots
   updatePageLayout: (pageIndex: number, layout: PageLayout) => void;
+  updatePageStyle: (pageIndex: number, style: Partial<Pick<PageData, 'backgroundColor' | 'slotBorderRadius' | 'slotSpacing' | 'slotBorderWidth' | 'slotBorderColor'>>) => void;
   updateSlotPhoto: (pageIndex: number, slotIndex: number, photoUri: string) => void;
+  updateSlotImageFit: (pageIndex: number, slotIndex: number, fit: Partial<Pick<PageSlotData, 'imageScale' | 'imageOffsetX' | 'imageOffsetY' | 'brightness' | 'contrast' | 'saturation' | 'warmth' | 'sharpness' | 'vignette'>>) => void;
   updateSlotText: (pageIndex: number, slotIndex: number, text: string, skipHistory?: boolean) => void;
   updateSlotTextStyle: (pageIndex: number, slotIndex: number, style: Partial<PageSlotData>, skipHistory?: boolean) => void;
   addTextSlotToPage: (pageIndex: number, preset: import('../types').TextStylePreset) => void;
@@ -66,6 +74,8 @@ interface EditorState {
   // Actions - Pages
   addPage: () => void;
   removePage: (index: number) => void;
+  removePagePair: (startIndex: number) => void;
+  toggleSpreadImage: (spreadStartIndex: number) => void;
 
   // Actions - Photos
   setAvailablePhotos: (photos: string[]) => void;
@@ -89,6 +99,33 @@ const createEmptyPage = (pageIndex: number): PageData => ({
   slots: [{ slotIndex: 0, type: 'photo' }],
   elements: [],
 });
+
+// ─── Achevé d'imprimer pages (locked) ───
+const createAchevePage = (pageIndex: number, isLeft: boolean): PageData => ({
+  pageIndex,
+  layoutId: 'single_full',
+  slots: isLeft
+    ? [{ slotIndex: 0, type: 'text' as const }]
+    : [{ slotIndex: 0, type: 'photo' as const }],
+  elements: [],
+  isAchevePage: true,
+  backgroundColor: '#FFFFFF',
+});
+
+// Ensure achevé pages exist (backward compat for old drafts)
+function ensureAchevePages(pages: PageData[]): PageData[] {
+  if (pages.some((p) => p.isAchevePage)) return pages;
+  // Insert 2 achevé pages before the back cover
+  const backCoverIdx = pages.length - 1;
+  const result = [...pages];
+  result.splice(
+    backCoverIdx,
+    0,
+    createAchevePage(backCoverIdx, true),
+    createAchevePage(backCoverIdx + 1, false),
+  );
+  return result.map((p, i) => ({ ...p, pageIndex: i }));
+}
 
 // ─── Ensure backward compat for drafts without elements ───
 function ensureElements(page: PageData): PageData {
@@ -124,6 +161,7 @@ export const useEditorStore = create<EditorState>((set, get) => ({
   format: 'square',
   pages: [],
   selectedPageIndex: 0,
+  zoomLevel: 1,
   selectedSlotIndex: null,
   selectedElementId: null,
   availablePhotos: [],
@@ -140,6 +178,8 @@ export const useEditorStore = create<EditorState>((set, get) => ({
   initEditor: async (projectId, format, existingPages, coverImageUri) => {
     let pages: PageData[];
     let photos: string[] = [];
+    let restoredPageIndex = 0;
+    let restoredZoomLevel = 1;
 
     if (existingPages && existingPages.length > 0) {
       pages = existingPages.map(ensureElements);
@@ -149,10 +189,23 @@ export const useEditorStore = create<EditorState>((set, get) => ({
         pages = draft.pages.map(ensureElements);
         photos = draft.availablePhotos || [];
         format = draft.metadata.format as FormatType;
+        // Restore UI state from draft
+        restoredPageIndex = draft.selectedPageIndex ?? 0;
+        restoredZoomLevel = draft.zoomLevel ?? 1;
       } else {
-        pages = Array.from({ length: 24 }, (_, i) => createEmptyPage(i));
+        // 24 pages: cover(0) + 20 interior + 2 achevé + backCover(23)
+        const allPages: PageData[] = [];
+        allPages.push(createEmptyPage(0)); // front cover
+        for (let i = 1; i <= 20; i++) allPages.push(createEmptyPage(i));
+        allPages.push(createAchevePage(21, true));  // achevé left
+        allPages.push(createAchevePage(22, false)); // achevé right
+        allPages.push(createEmptyPage(23)); // back cover
+        pages = allPages;
       }
     }
+
+    // Ensure achevé pages exist (backward compat)
+    pages = ensureAchevePages(pages);
 
     if (coverImageUri && pages.length > 0) {
       const coverPage = { ...pages[0] };
@@ -168,7 +221,8 @@ export const useEditorStore = create<EditorState>((set, get) => ({
       projectId,
       format,
       pages,
-      selectedPageIndex: 0,
+      selectedPageIndex: restoredPageIndex,
+      zoomLevel: restoredZoomLevel,
       selectedSlotIndex: null,
       selectedElementId: null,
       availablePhotos: photos,
@@ -182,7 +236,14 @@ export const useEditorStore = create<EditorState>((set, get) => ({
   },
 
   // ═══ Navigation ═══
-  setSelectedPage: (index) => set({ selectedPageIndex: index, selectedSlotIndex: null, selectedElementId: null }),
+  setSelectedPage: (index) => {
+    set({ selectedPageIndex: index, selectedSlotIndex: null, selectedElementId: null });
+    debouncedSave(get());
+  },
+  setZoomLevel: (zoom) => {
+    set({ zoomLevel: zoom });
+    debouncedSave(get());
+  },
   setSelectedSlot: (index) => set({ selectedSlotIndex: index, selectedElementId: null }),
   setSelectedElementId: (id) => set({ selectedElementId: id, selectedSlotIndex: null }),
 
@@ -201,6 +262,17 @@ export const useEditorStore = create<EditorState>((set, get) => ({
       }));
       // Preserve free elements
       page.elements = [...(page.elements || [])];
+      pages[pageIndex] = page;
+      return { ...histUp, pages, isSaved: false };
+    });
+    debouncedSave(get());
+  },
+
+  updatePageStyle: (pageIndex, style) => {
+    set((state) => {
+      const histUp = pushHistory(state);
+      const pages = [...state.pages];
+      const page = { ...pages[pageIndex], ...style };
       pages[pageIndex] = page;
       return { ...histUp, pages, isSaved: false };
     });
@@ -242,6 +314,20 @@ export const useEditorStore = create<EditorState>((set, get) => ({
       const page = { ...pages[pageIndex] };
       const slots = [...page.slots];
       slots[slotIndex] = { ...slots[slotIndex], ...style };
+      page.slots = slots;
+      pages[pageIndex] = page;
+      return { ...histUp, pages, isSaved: false };
+    });
+    debouncedSave(get());
+  },
+
+  updateSlotImageFit: (pageIndex, slotIndex, fit) => {
+    set((state) => {
+      const histUp = pushHistory(state);
+      const pages = [...state.pages];
+      const page = { ...pages[pageIndex] };
+      const slots = [...page.slots];
+      slots[slotIndex] = { ...slots[slotIndex], ...fit };
       page.slots = slots;
       pages[pageIndex] = page;
       return { ...histUp, pages, isSaved: false };
@@ -401,9 +487,19 @@ export const useEditorStore = create<EditorState>((set, get) => ({
   addPage: () => {
     set((state) => {
       const histUp = pushHistory(state);
+      // Find the first achevé page index (insert before it)
+      const acheveIdx = state.pages.findIndex((p) => p.isAchevePage);
+      const insertAt = acheveIdx > 0 ? acheveIdx : state.pages.length - 1;
+      const newPages = [...state.pages];
+      newPages.splice(insertAt, 0,
+        createEmptyPage(insertAt),
+        createEmptyPage(insertAt + 1),
+      );
+      // Re-index all pages
+      const reindexed = newPages.map((p, i) => ({ ...p, pageIndex: i }));
       return {
         ...histUp,
-        pages: [...state.pages, createEmptyPage(state.pages.length)],
+        pages: reindexed,
         isSaved: false,
       };
     });
@@ -425,6 +521,54 @@ export const useEditorStore = create<EditorState>((set, get) => ({
     debouncedSave(get());
   },
 
+  removePagePair: (startIndex) => {
+    set((state) => {
+      // Cannot remove cover pages (first and last)
+      if (startIndex <= 0 || startIndex + 1 >= state.pages.length - 1) return state;
+      // Cannot remove achevé pages
+      if (state.pages[startIndex]?.isAchevePage || state.pages[startIndex + 1]?.isAchevePage) return state;
+      // Must have at least 6 pages after removal (2 covers + 2 achevé + 2 interior)
+      if (state.pages.length <= 6) return state;
+      const histUp = pushHistory(state);
+      const pages = state.pages
+        .filter((_, i) => i !== startIndex && i !== startIndex + 1)
+        .map((p, i) => ({ ...p, pageIndex: i }));
+      // Navigate to previous spread or cover
+      const newSelected = startIndex <= 1 ? 0 : Math.max(1, startIndex - 2);
+      return {
+        ...histUp,
+        pages,
+        selectedPageIndex: Math.min(newSelected, pages.length - 1),
+        isSaved: false,
+      };
+    });
+    debouncedSave(get());
+  },
+
+  toggleSpreadImage: (spreadStartIndex) => {
+    set((state) => {
+      // Only works for interior spreads (not covers, not achevé)
+      if (spreadStartIndex <= 0 || spreadStartIndex + 1 >= state.pages.length - 1) return state;
+      if (state.pages[spreadStartIndex]?.isAchevePage) return state;
+      // Must be an odd index (left page of a spread)
+      if (spreadStartIndex % 2 !== 1) return state;
+      const histUp = pushHistory(state);
+      const pages = [...state.pages];
+      const leftPage = { ...pages[spreadStartIndex] };
+      leftPage.isSpreadImage = !leftPage.isSpreadImage;
+      // When enabling spread image: ensure slot 0 exists for the photo, use single_full layout
+      if (leftPage.isSpreadImage) {
+        leftPage.layoutId = 'single_full';
+        if (leftPage.slots.length === 0) {
+          leftPage.slots = [{ slotIndex: 0, type: 'photo' }];
+        }
+      }
+      pages[spreadStartIndex] = leftPage;
+      return { ...histUp, pages, isSaved: false };
+    });
+    debouncedSave(get());
+  },
+
   // ═══ Photos ═══
   setAvailablePhotos: (photos) => set({ availablePhotos: photos }),
   addAvailablePhoto: (uri) =>
@@ -438,6 +582,7 @@ export const useEditorStore = create<EditorState>((set, get) => ({
       projectId: null,
       pages: [],
       selectedPageIndex: 0,
+      zoomLevel: 1,
       selectedSlotIndex: null,
       selectedElementId: null,
       availablePhotos: [],
@@ -457,7 +602,8 @@ export const useEditorStore = create<EditorState>((set, get) => ({
       format: draft.metadata.format as FormatType,
       pages,
       availablePhotos: draft.availablePhotos || [],
-      selectedPageIndex: 0,
+      selectedPageIndex: draft.selectedPageIndex ?? 0,
+      zoomLevel: draft.zoomLevel ?? 1,
       selectedSlotIndex: null,
       selectedElementId: null,
       isSaved: true,
@@ -472,7 +618,7 @@ export const useEditorStore = create<EditorState>((set, get) => ({
   saveDraftNow: async () => {
     const state = get();
     if (!state.projectId) return;
-    await saveDraft(state.projectId, state.format, state.pages, state.availablePhotos);
+    await saveDraft(state.projectId, state.format, state.pages, state.availablePhotos, state.selectedPageIndex, state.zoomLevel);
     set({ isSaved: true });
   },
 
