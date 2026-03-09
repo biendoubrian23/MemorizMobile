@@ -51,7 +51,8 @@ function getAcheveDate(): string {
   return `${FRENCH_MONTHS[now.getMonth()]} ${now.getFullYear()}`;
 }
 
-const { width: SCREEN_WIDTH } = Dimensions.get('window');
+const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
+const SHEET_HEIGHT = SCREEN_HEIGHT * 0.55;
 const SPREAD_WIDTH = SCREEN_WIDTH - Spacing.xl * 2;
 const PAGE_WIDTH_BASE = SPREAD_WIDTH / 2;
 
@@ -797,7 +798,10 @@ export default function EditorScreen() {
         scrollEnabled={!selectedElementId}
       >
         <ScrollView
-          contentContainerStyle={styles.canvasAreaInner}
+          contentContainerStyle={[
+            styles.canvasAreaInner,
+            activeSheet && { paddingBottom: SHEET_HEIGHT },
+          ]}
           showsVerticalScrollIndicator={zoomLevel > 1.2}
           showsHorizontalScrollIndicator={false}
           bounces={false}

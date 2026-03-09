@@ -10,7 +10,6 @@ import {
   FlatList,
   NativeSyntheticEvent,
   NativeScrollEvent,
-  Share,
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -23,7 +22,7 @@ import { THEMATIQUES } from '../../../src/data/thematiques';
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 const HERO_WIDTH = SCREEN_WIDTH;
 const AUTO_SCROLL_INTERVAL = 7000; // 7 secondes
-const PROMO_CARD_WIDTH = SCREEN_WIDTH - Spacing.xl * 2 - 20; // slightly narrower to hint next card
+const PRODUCT_CARD_WIDTH = (SCREEN_WIDTH - Spacing.xl * 2 - Spacing.md) / 2;
 
 /* ─── Données ──────────────────────────────────────────────── */
 
@@ -91,7 +90,7 @@ export default function HomeScreen() {
         <Text style={styles.heroSubtitle}>{item.subtitle}</Text>
         <TouchableOpacity
           style={styles.heroCta}
-          onPress={() => router.push('/(app)/create/setup')}
+          onPress={() => router.push('/(app)/categories')}
           activeOpacity={0.85}
         >
           <Text style={styles.heroCtaText}>CRÉER MON SOUVENIR</Text>
@@ -142,11 +141,11 @@ export default function HomeScreen() {
           </View>
         </View>
 
-        {/* Thématiques */}
+        {/* Catégories */}
         <View style={styles.section}>
           <View style={styles.sectionHeader}>
-            <Text style={styles.sectionTitle}>Thématiques</Text>
-            <TouchableOpacity onPress={() => router.push('/(app)/thematiques')}>
+            <Text style={styles.sectionTitle}>Catégories</Text>
+            <TouchableOpacity onPress={() => router.push('/(app)/categories')}>
               <Text style={styles.seeAll}>Tout voir</Text>
             </TouchableOpacity>
           </View>
@@ -160,7 +159,7 @@ export default function HomeScreen() {
                 key={theme.id}
                 style={styles.themeCard}
                 activeOpacity={0.85}
-                onPress={() => router.push(`/(app)/create/setup?themeId=${theme.id}`)}
+                onPress={() => router.push('/(app)/categories')}
               >
                 <Image source={theme.image} style={styles.themeImage} />
                 <LinearGradient
@@ -197,133 +196,76 @@ export default function HomeScreen() {
           </View>
         </View>
 
-        {/* ─── Carousel promotionnel ──────────────────────────── */}
-        <View style={styles.promoSection}>
+        {/* ─── Section 1 : Bannière promo Livres photo ─────────── */}
+        <TouchableOpacity style={styles.promoBanner} activeOpacity={0.85} onPress={() => router.push('/(app)/categories')}>
+          <View style={styles.promoBannerInner}>
+            <Image
+              source={require('../../../assets/images/accueil/image (1).jpeg')}
+              style={styles.promoBannerImage}
+            />
+            <View style={styles.promoBannerText}>
+              <Text style={styles.promoBannerTitle}>Livres photo <Text style={{ color: Colors.accent }}>❤️</Text></Text>
+              <View style={styles.promoBannerDivider} />
+              <Text style={styles.promoBannerDiscount}>-30%</Text>
+              <Text style={styles.promoBannerSub}>sans minimum</Text>
+              <View style={styles.promoBannerCodeRow}>
+                <Text style={styles.promoBannerCodeLabel}>Code : </Text>
+                <Text style={styles.promoBannerCode}>30LIVRES</Text>
+              </View>
+            </View>
+          </View>
+        </TouchableOpacity>
+
+        {/* ─── Section 2 : Fabrication française ──────────────── */}
+        <TouchableOpacity style={styles.fabricSection} activeOpacity={0.85} onPress={() => router.push('/(app)/categories')}>
+          <Text style={styles.fabricTitle}>Livres photo</Text>
+          <Text style={styles.fabricSubtitle}>Créez un livre 100% unique à votre image</Text>
+          <View style={styles.fabricBadge}>
+            <Text style={styles.fabricBadgeText}>FABRICATION 🇫🇷</Text>
+          </View>
+          <Image
+            source={require('../../../assets/images/accueil/image (2).jpeg')}
+            style={styles.fabricImage}
+          />
+        </TouchableOpacity>
+
+        {/* ─── Section 3 : Carrousel Paysage / Portrait ──────── */}
+        <View style={styles.productSection}>
           <ScrollView
             horizontal
             showsHorizontalScrollIndicator={false}
-            contentContainerStyle={styles.promoScroll}
+            contentContainerStyle={styles.productScroll}
             decelerationRate="fast"
-            snapToInterval={PROMO_CARD_WIDTH + Spacing.md}
+            snapToInterval={PRODUCT_CARD_WIDTH + Spacing.md}
             snapToAlignment="start"
           >
-            {/* ── 1. Offres du moment ── */}
-            <LinearGradient
-              colors={[Colors.accent, '#C4264A']}
-              start={{ x: 0, y: 0 }}
-              end={{ x: 1, y: 1 }}
-              style={styles.promoCard}
+            {/* Paysage */}
+            <TouchableOpacity
+              style={styles.productCard}
+              activeOpacity={0.85}
+              onPress={() => router.push('/(app)/categories')}
             >
-              <View style={styles.promoCardHeader}>
-                <Ionicons name="pricetag" size={22} color="#fff" />
-                <Text style={styles.promoCardTitle}>Offres du moment</Text>
-              </View>
-              <Text style={styles.promoCardSubtitle}>-15% sur votre première commande</Text>
-              <View style={styles.promoCodeBadge}>
-                <Text style={styles.promoCodeText}>MEMORIZ10</Text>
-              </View>
-              <View style={styles.promoCountdownRow}>
-                <Ionicons name="time-outline" size={14} color="rgba(255,255,255,0.8)" />
-                <Text style={styles.promoCountdownText}>Expire dans 3j 12h 45min</Text>
-              </View>
-              <TouchableOpacity style={styles.promoCtaWhite} activeOpacity={0.85}>
-                <Text style={styles.promoCtaTextAccent}>En profiter</Text>
-                <Ionicons name="arrow-forward" size={16} color={Colors.accent} />
-              </TouchableOpacity>
-            </LinearGradient>
+              <Image
+                source={require('../../../assets/images/accueil/image (3).jpeg')}
+                style={styles.productCardImage}
+              />
+              <Text style={styles.productCardTitle}>Livres Photo - Paysage</Text>
+              <Text style={styles.productCardPrice}>À partir de 16,99 €</Text>
+            </TouchableOpacity>
 
-            {/* ── 2. Chiffres clés ── */}
-            <LinearGradient
-              colors={[Colors.primary, '#0F1A33']}
-              start={{ x: 0, y: 0 }}
-              end={{ x: 1, y: 1 }}
-              style={styles.promoCard}
+            {/* Portrait */}
+            <TouchableOpacity
+              style={styles.productCard}
+              activeOpacity={0.85}
+              onPress={() => router.push('/(app)/categories')}
             >
-              <View style={styles.promoCardHeader}>
-                <Ionicons name="trending-up" size={22} color="#fff" />
-                <Text style={styles.promoCardTitle}>Chiffres clés</Text>
-              </View>
-              <View style={styles.chiffresGrid}>
-                <View style={styles.chiffreItem}>
-                  <Text style={styles.chiffreNumber}>15 000+</Text>
-                  <Text style={styles.chiffreLabel}>albums créés</Text>
-                </View>
-                <View style={styles.chiffreItem}>
-                  <Text style={styles.chiffreNumber}>4.8/5</Text>
-                  <Text style={styles.chiffreLabel}>satisfaction</Text>
-                </View>
-                <View style={styles.chiffreItem}>
-                  <Text style={styles.chiffreNumber}>50 000+</Text>
-                  <Text style={styles.chiffreLabel}>photos imprimées</Text>
-                </View>
-                <View style={styles.chiffreItem}>
-                  <Text style={styles.chiffreNumber}>98%</Text>
-                  <Text style={styles.chiffreLabel}>recommandent</Text>
-                </View>
-              </View>
-            </LinearGradient>
-
-            {/* ── 3. Parrainage ── */}
-            <LinearGradient
-              colors={[Colors.success, '#059669']}
-              start={{ x: 0, y: 0 }}
-              end={{ x: 1, y: 1 }}
-              style={styles.promoCard}
-            >
-              <View style={styles.promoCardHeader}>
-                <Ionicons name="gift" size={22} color="#fff" />
-                <Text style={styles.promoCardTitle}>Parrainage</Text>
-              </View>
-              <Text style={styles.promoCardSubtitle}>
-                Invitez un ami, gagnez 5€ chacun !
-              </Text>
-              <Text style={styles.parrainageDesc}>
-                Partagez votre code et recevez un bon de réduction dès la première commande de votre filleul.
-              </Text>
-              <TouchableOpacity
-                style={styles.promoCtaWhite}
-                activeOpacity={0.85}
-                onPress={() => {
-                  Share.share({
-                    message: 'Rejoins Memoriz et crée ton album photo ! Utilise mon code pour obtenir 5€ de réduction 🎁',
-                  });
-                }}
-              >
-                <Ionicons name="share-social" size={16} color={Colors.success} />
-                <Text style={[styles.promoCtaTextAccent, { color: Colors.success }]}>Partager</Text>
-              </TouchableOpacity>
-            </LinearGradient>
-
-            {/* ── 4. Idées cadeaux ── */}
-            <LinearGradient
-              colors={['#F59E0B', '#D97706']}
-              start={{ x: 0, y: 0 }}
-              end={{ x: 1, y: 1 }}
-              style={styles.promoCard}
-            >
-              <View style={styles.promoCardHeader}>
-                <Ionicons name="sparkles" size={22} color="#fff" />
-                <Text style={styles.promoCardTitle}>Idées cadeaux</Text>
-              </View>
-              <Text style={styles.promoCardSubtitle}>
-                Un album pour chaque occasion
-              </Text>
-              <View style={styles.occasionTags}>
-                {['Noël', 'Saint-Valentin', 'Fête des mères', 'Anniversaire', 'Mariage', 'Naissance'].map((tag) => (
-                  <View key={tag} style={styles.occasionTag}>
-                    <Text style={styles.occasionTagText}>{tag}</Text>
-                  </View>
-                ))}
-              </View>
-              <TouchableOpacity
-                style={styles.promoCtaWhite}
-                activeOpacity={0.85}
-                onPress={() => router.push('/thematiques')}
-              >
-                <Text style={[styles.promoCtaTextAccent, { color: '#D97706' }]}>Découvrir</Text>
-                <Ionicons name="arrow-forward" size={16} color="#D97706" />
-              </TouchableOpacity>
-            </LinearGradient>
+              <Image
+                source={require('../../../assets/images/accueil/image (4).jpeg')}
+                style={styles.productCardImage}
+              />
+              <Text style={styles.productCardTitle}>Livres Photo - Portrait</Text>
+              <Text style={styles.productCardPrice}>À partir de 32,99 €</Text>
+            </TouchableOpacity>
           </ScrollView>
         </View>
       </ScrollView>
@@ -504,124 +446,131 @@ const styles = StyleSheet.create({
     color: Colors.textSecondary,
   },
 
-  /* Promo Carousel */
-  promoSection: {
-    marginTop: Spacing.xl,
-  },
-  promoScroll: {
+  /* Promo Banner (Section 1) */
+  promoBanner: {
+    marginTop: Spacing['2xl'],
     paddingHorizontal: Spacing.xl,
-    gap: Spacing.md,
-    paddingRight: Spacing['2xl'],
   },
-  promoCard: {
-    width: PROMO_CARD_WIDTH,
-    borderRadius: BorderRadius.xl,
-    padding: Spacing.md,
-    justifyContent: 'space-between',
-  },
-  promoCardHeader: {
+  promoBannerInner: {
     flexDirection: 'row',
+    backgroundColor: '#F5F0EA',
+    borderRadius: BorderRadius.xl,
+    overflow: 'hidden',
     alignItems: 'center',
-    gap: Spacing.sm,
+  },
+  promoBannerImage: {
+    width: '45%',
+    height: 180,
+    resizeMode: 'cover',
+  },
+  promoBannerText: {
+    flex: 1,
+    paddingHorizontal: Spacing.lg,
+    paddingVertical: Spacing.md,
+    alignItems: 'center',
+  },
+  promoBannerTitle: {
+    ...Typography.h4,
+    fontWeight: '800',
+    color: Colors.textPrimary,
     marginBottom: Spacing.sm,
   },
-  promoCardTitle: {
-    ...Typography.h4,
-    color: '#fff',
+  promoBannerDivider: {
+    width: 40,
+    height: 2,
+    backgroundColor: Colors.textSecondary,
+    marginBottom: Spacing.sm,
+  },
+  promoBannerDiscount: {
+    fontSize: 36,
+    fontWeight: '900',
+    color: Colors.primary,
     fontFamily: 'PlayfairDisplay_700Bold',
   },
-  promoCardSubtitle: {
+  promoBannerSub: {
     ...Typography.body,
-    color: 'rgba(255,255,255,0.92)',
-    marginBottom: Spacing.sm,
-    lineHeight: 22,
+    color: Colors.primary,
+    fontWeight: '600',
+    marginBottom: Spacing.md,
   },
-  promoCodeBadge: {
+  promoBannerCodeRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  promoBannerCodeLabel: {
+    ...Typography.bodySmall,
+    color: Colors.textSecondary,
+  },
+  promoBannerCode: {
+    fontSize: 18,
+    fontWeight: '900',
+    color: Colors.primary,
+    letterSpacing: 1,
+  },
+
+  /* Fabrication (Section 2) */
+  fabricSection: {
+    marginTop: Spacing['2xl'],
+    paddingHorizontal: Spacing.xl,
+  },
+  fabricTitle: {
+    ...Typography.h3,
+    fontWeight: '800',
+    color: Colors.textPrimary,
+    marginBottom: Spacing.xs,
+  },
+  fabricSubtitle: {
+    ...Typography.body,
+    color: Colors.textSecondary,
+    marginBottom: Spacing.md,
+  },
+  fabricBadge: {
     alignSelf: 'flex-start',
-    backgroundColor: 'rgba(255,255,255,0.2)',
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.4)',
+    backgroundColor: Colors.textPrimary,
     borderRadius: BorderRadius.md,
     paddingHorizontal: Spacing.md,
     paddingVertical: Spacing.xs,
-    marginBottom: Spacing.sm,
+    marginBottom: Spacing.lg,
   },
-  promoCodeText: {
-    ...Typography.body,
-    fontWeight: '800',
-    color: '#fff',
-    letterSpacing: 2,
-    fontSize: 18,
-  },
-  promoCountdownRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    marginBottom: Spacing.md,
-  },
-  promoCountdownText: {
-    ...Typography.bodySmall,
-    color: 'rgba(255,255,255,0.8)',
-  },
-  promoCtaWhite: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: Spacing.xs,
-    backgroundColor: '#fff',
-    borderRadius: BorderRadius.lg,
-    paddingVertical: Spacing.sm,
-    paddingHorizontal: Spacing.lg,
-    alignSelf: 'flex-start',
-    marginTop: Spacing.xs,
-  },
-  promoCtaTextAccent: {
+  fabricBadgeText: {
     ...Typography.bodySmall,
     fontWeight: '700',
-    color: Colors.accent,
+    color: '#fff',
+    letterSpacing: 1,
   },
-  chiffresGrid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
+  fabricImage: {
+    width: '100%',
+    height: 220,
+    borderRadius: BorderRadius.xl,
+    resizeMode: 'cover',
+  },
+
+  /* Product Carousel (Section 3) */
+  productSection: {
+    marginTop: Spacing['2xl'],
+  },
+  productScroll: {
+    paddingHorizontal: Spacing.xl,
     gap: Spacing.md,
-    marginTop: Spacing.sm,
   },
-  chiffreItem: {
-    width: '45%' as any,
-    alignItems: 'center',
+  productCard: {
+    width: PRODUCT_CARD_WIDTH,
   },
-  chiffreNumber: {
-    fontSize: 28,
-    fontWeight: '800',
-    color: '#fff',
-    fontFamily: 'PlayfairDisplay_700Bold',
+  productCardImage: {
+    width: '100%',
+    height: 160,
+    borderRadius: BorderRadius.lg,
+    resizeMode: 'cover',
+    marginBottom: Spacing.sm,
   },
-  chiffreLabel: {
+  productCardTitle: {
+    ...Typography.body,
+    fontWeight: '700',
+    color: Colors.textPrimary,
+    marginBottom: 2,
+  },
+  productCardPrice: {
     ...Typography.bodySmall,
-    color: 'rgba(255,255,255,0.75)',
-    marginTop: 2,
-  },
-  parrainageDesc: {
-    ...Typography.bodySmall,
-    color: 'rgba(255,255,255,0.8)',
-    lineHeight: 20,
-    marginBottom: Spacing.md,
-  },
-  occasionTags: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: Spacing.xs,
-    marginBottom: Spacing.md,
-  },
-  occasionTag: {
-    backgroundColor: 'rgba(255,255,255,0.25)',
-    borderRadius: BorderRadius.full,
-    paddingHorizontal: Spacing.md,
-    paddingVertical: 6,
-  },
-  occasionTagText: {
-    ...Typography.bodySmall,
-    color: '#fff',
-    fontWeight: '600',
+    color: Colors.textSecondary,
   },
 });

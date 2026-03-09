@@ -63,7 +63,7 @@ export default function TabLayout() {
         options={{
           title: '',
           tabBarButton: (props) => (
-            <CreateTabButton onPress={() => router.push('/(app)/create/setup')} />
+            <CreateTabButton onPress={() => router.push('/(app)/categories')} />
           ),
         }}
       />

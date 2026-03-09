@@ -4,12 +4,13 @@ import {
   Text,
   StyleSheet,
   Dimensions,
-  ImageBackground,
+  Image,
   TouchableOpacity,
 } from 'react-native';
 import { useRouter } from 'expo-router';
-import { Colors, Typography, Spacing, BorderRadius } from '../../src/theme';
-import { Button, Logo } from '../../src/components/ui';
+import { LinearGradient } from 'expo-linear-gradient';
+import { Typography, Spacing } from '../../src/theme';
+import { Button } from '../../src/components/ui';
 
 const { width, height } = Dimensions.get('window');
 
@@ -17,107 +18,115 @@ export default function WelcomeScreen() {
   const router = useRouter();
 
   return (
-    <ImageBackground
-      source={require('../../assets/images/premierepage.png')}
+    <LinearGradient
+      colors={['#F2A7C3', '#F7C4D8', '#FCE4EE', '#FFF0F6', '#FFFFFF']}
+      locations={[0, 0.25, 0.5, 0.75, 1]}
       style={styles.container}
-      resizeMode="cover"
     >
-      {/* Dark overlay for readability */}
-      <View style={styles.overlay} />
-
-      {/* Center content */}
-      <View style={styles.content}>
-        {/* Top: Logo */}
-        <View style={styles.topSection}>
-          <Logo size="lg" color={Colors.white} />
-        </View>
-
-        {/* Bottom Group: CTA card + Headline + Guest Link */}
-        <View style={styles.bottomGroup}>
-          <View style={styles.ctaCard}>
-            <Button
-              title="Se connecter"
-              onPress={() => router.push('/(auth)/login')}
-              variant="primary"
-              size="lg"
-            />
-            <Button
-              title="Créer un compte"
-              onPress={() => router.push('/(auth)/register')}
-              variant="outline"
-              size="lg"
-            />
-          </View>
-
-          <View style={styles.textSection}>
-            <Text style={styles.headline}>
-              Imprimez vos souvenirs{"\n"}en quelques clics.
-            </Text>
-            <TouchableOpacity
-              onPress={() => router.replace('/(app)/(tabs)')}
-              style={styles.guestBtn}
-            >
-              <Text style={styles.guestText}>Continuer en tant qu'invité</Text>
-            </TouchableOpacity>
-          </View>
-        </View>
+      {/* Image de livres en haut */}
+      <View style={styles.imageWrapper}>
+        <Image
+          source={require('../../assets/images/first.png')}
+          style={styles.bookImage}
+          resizeMode="contain"
+        />
       </View>
-    </ImageBackground>
+
+      {/* Contenu bas */}
+      <View style={styles.bottomContent}>
+        {/* Nom de la marque */}
+        <Text style={styles.brandName}>Memoriz.</Text>
+
+        {/* Accroche */}
+        <Text style={styles.tagline}>
+          Le moyen le plus simple{'\n'}d’imprimer vos souvenirs
+        </Text>
+        <Text style={styles.subTagline}>
+          Créez un objet délicieusement unique en quelques clics.
+        </Text>
+
+        {/* Boutons */}
+        <View style={styles.buttonsContainer}>
+          <Button
+            title="Se connecter"
+            onPress={() => router.push('/(auth)/login')}
+            variant="primary"
+            size="lg"
+          />
+          <Button
+            title="Créer un compte"
+            onPress={() => router.push('/(auth)/register')}
+            variant="outline"
+            size="lg"
+          />
+        </View>
+
+        {/* Lien invité */}
+        <TouchableOpacity
+          onPress={() => router.replace('/(app)/(tabs)')}
+          style={styles.guestBtn}
+        >
+          <Text style={styles.guestText}>Continuer en tant qu’invité</Text>
+        </TouchableOpacity>
+      </View>
+    </LinearGradient>
   );
 }
 
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#2C1E12',
   },
-  overlay: {
-    ...StyleSheet.absoluteFillObject,
-    backgroundColor: 'rgba(0,0,0,0.45)',
-  },
-  content: {
+  imageWrapper: {
     flex: 1,
-    justifyContent: 'space-between',
     alignItems: 'center',
+    justifyContent: 'center',
+    paddingTop: Spacing['4xl'],
+  },
+  bookImage: {
+    width: width * 1.0,
+    height: height * 0.48,
+  },
+  bottomContent: {
     paddingHorizontal: Spacing.xl,
-    paddingTop: Spacing['4xl'] * 1.5,
-    paddingBottom: Spacing['3xl'], // slightly reduced bottom padding
-  },
-  topSection: {
-    alignItems: 'center',
-  },
-  bottomGroup: {
-    width: '100%',
-    alignItems: 'center',
-    gap: Spacing.xl, // Space between buttons and the text below
-  },
-  ctaCard: {
-    backgroundColor: 'rgba(255,255,255,0.95)',
-    borderRadius: BorderRadius.xl,
-    paddingHorizontal: Spacing.xl,
-    paddingVertical: Spacing['2xl'],
-    gap: Spacing.md,
-    alignItems: 'center',
-    width: '100%',
-  },
-  textSection: {
-    alignItems: 'center',
+    paddingBottom: Spacing['4xl'],
+    alignItems: 'flex-start',
     gap: Spacing.sm,
   },
-  headline: {
-    fontSize: 26, // Slightly smaller
-    fontStyle: 'italic',
-    fontWeight: '300',
-    color: Colors.white,
-    textAlign: 'center',
-    lineHeight: 36,
+  brandName: {
+    fontFamily: 'PlayfairDisplay_700Bold',
+    fontSize: 42,
+    color: '#C0396B',
+    marginBottom: Spacing.xs,
+    letterSpacing: -0.5,
+  },
+  tagline: {
+    fontSize: 22,
+    fontWeight: '700',
+    color: '#C0396B',
+    lineHeight: 30,
+  },
+  subTagline: {
+    fontSize: 14,
+    fontWeight: '400',
+    color: '#C0396B',
+    opacity: 0.8,
+    marginBottom: Spacing.md,
+  },
+  buttonsContainer: {
+    width: '100%',
+    gap: Spacing.md,
+    marginTop: Spacing.sm,
   },
   guestBtn: {
     paddingVertical: Spacing.sm,
+    alignSelf: 'center',
+    marginTop: Spacing.xs,
   },
   guestText: {
     ...Typography.bodySmall,
-    color: 'rgba(255,255,255,0.7)',
+    color: '#C0396B',
+    opacity: 0.7,
     textDecorationLine: 'underline',
   },
 });

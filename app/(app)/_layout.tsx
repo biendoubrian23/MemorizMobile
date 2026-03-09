@@ -22,6 +22,12 @@ export default function AppLayout() {
         }}
       />
       <Stack.Screen
+        name="categories"
+        options={{
+          animation: 'slide_from_right',
+        }}
+      />
+      <Stack.Screen
         name="thematiques"
         options={{
           animation: 'slide_from_right',
